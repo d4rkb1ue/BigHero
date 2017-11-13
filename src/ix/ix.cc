@@ -1,4 +1,3 @@
-
 #include "ix.h"
 
 IndexManager *IndexManager::_index_manager = 0;

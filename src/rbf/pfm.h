@@ -5,13 +5,34 @@ typedef unsigned PageNum;
 typedef int RC;
 typedef char byte;
 
+/**
+ * ALL SIZE is # of Bytes
+ */
 #define PAGE_SIZE 4096
+#define FILEHEADER_LEN 5
+#define FILEHEADER_SIZE (FILEHEADER_LEN * sizeof(unsigned))
+
+/**
+ * Each Directory Page keep # DIR_PAGE_LEN of
+ * data sizes for corresponding data pages
+ * Aka 1024
+ */
+#define DIR_PAGE_LEN (PAGE_SIZE / sizeof(unsigned))
+
 #include <string>
 #include <climits>
+#include <cstdio>
+#include <iostream>
+#include <vector>
+#include <cstring>
+
 using namespace std;
 
 class FileHandle;
 
+/****************************************************
+ *                  PagedFileManager                *
+ ****************************************************/
 class PagedFileManager
 {
   public:
@@ -30,10 +51,93 @@ class PagedFileManager
     static PagedFileManager *_pf_manager;
 };
 
+/****************************************************
+ *                  DirectroyPage                   *
+ ****************************************************/
+class DirectroyPage
+{
+    unsigned dataSize[DIR_PAGE_LEN];
+
+  public:
+    RC readRawData(void *d);
+    RC getRawData(void *d);
+
+    RC getDataSize(PageNum &pageNum, unsigned &size);
+    RC updateDataSize(PageNum &pageNum, unsigned size);
+};
+
+/****************************************************
+ *                    FileHeader                    *
+ ****************************************************/
+class FileHeader
+{
+    /**
+     * change this need to change FILEHEADER_SIZE also!
+     */
+    struct FileHeaderData
+    {
+        unsigned readPageCounter;
+        unsigned writePageCounter;
+        unsigned appendPageCounter;
+        unsigned pageCount;
+        unsigned dirCount;
+    };
+
+  public:
+    FileHeaderData data;
+    FileHeader();
+    FileHeader(unsigned readPageCounter,
+               unsigned writePageCounter,
+               unsigned appendPageCounter,
+               unsigned pageCount,
+               unsigned dirCount);
+    RC readRawData(void *d);
+    RC getRawData(void *d);
+};
+
+/****************************************************
+ *                    FileHandle                    *
+ ****************************************************/
 class FileHandle
 {
+    FILE *filePtr;
+    FileHeader fileHeader;
+    vector<DirectroyPage> dirPages;
+
+    unsigned pageCount;
+    unsigned dirCount;
+
+    RC _rawReadPage(PageNum pageNum, void *data);
+    RC _rawWritePage(PageNum pageNum, const void *data);
+    RC _rawAppendPage(const void *data);
+
+    RC _rawReadByte(unsigned offset, unsigned len, void *data);
+    RC _rawWriteByte(unsigned start, unsigned end, void *data);
+
+    RC readDirPages();
+    RC updateDirPages();
+
+    RC readFileHeader();
+    RC updateFileHeader();
+
+    RC flushAll();
+
+    size_t getFileSize();
+
   public:
-    // variables to keep the counter for each operation
+    FileHandle(FILE *f);
+
+    RC writePage(PageNum pageNum, const void *data, unsigned dataSize);
+    RC appendPage(const void *data, unsigned dataSize);
+    RC updateDataSize(PageNum pageNum, unsigned dataSize);
+
+    RC getPageSize(PageNum pageNum, unsigned &size);
+    RC close();
+
+    /***********************
+     * ORIGINAL Interfaces *
+     ***********************/
+
     unsigned readPageCounter;
     unsigned writePageCounter;
     unsigned appendPageCounter;

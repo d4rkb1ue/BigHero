@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <string>
+#include <cstring>
 
 #include "../rbf/rbfm.h"
 
@@ -74,18 +75,12 @@ class IX_ScanIterator
 class IXFileHandle
 {
   public:
-    // variables to keep counter for each operation
     unsigned ixReadPageCounter;
     unsigned ixWritePageCounter;
     unsigned ixAppendPageCounter;
 
-    // Constructor
     IXFileHandle();
-
-    // Destructor
     ~IXFileHandle();
-
-    // Put the current counter values of associated PF FileHandles into variables
     RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
 };
 
