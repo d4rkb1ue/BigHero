@@ -1,7 +1,7 @@
 
 #include "rm.h"
 
-RelationManager* RelationManager::instance()
+RelationManager *RelationManager::instance()
 {
     static RelationManager _rm;
     return &_rm;
@@ -62,7 +62,7 @@ RC RelationManager::readTuple(const string &tableName, const RID &rid, void *dat
 
 RC RelationManager::printTuple(const vector<Attribute> &attrs, const void *data)
 {
-	return -1;
+    return -1;
 }
 
 RC RelationManager::readAttribute(const string &tableName, const RID &rid, const string &attributeName, void *data)
@@ -71,11 +71,11 @@ RC RelationManager::readAttribute(const string &tableName, const RID &rid, const
 }
 
 RC RelationManager::scan(const string &tableName,
-      const string &conditionAttribute,
-      const CompOp compOp,                  
-      const void *value,                    
-      const vector<string> &attributeNames,
-      RM_ScanIterator &rm_ScanIterator)
+                         const string &conditionAttribute,
+                         const CompOp compOp,
+                         const void *value,
+                         const vector<string> &attributeNames,
+                         RM_ScanIterator &rm_ScanIterator)
 {
     return -1;
 }
@@ -91,5 +91,3 @@ RC RelationManager::addAttribute(const string &tableName, const Attribute &attr)
 {
     return -1;
 }
-
-

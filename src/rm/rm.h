@@ -9,25 +9,25 @@
 
 using namespace std;
 
-# define RM_EOF (-1)  // end of a scan operator
+#define RM_EOF (-1) // end of a scan operator
 
 // RM_ScanIterator is an iteratr to go through tuples
-class RM_ScanIterator {
+class RM_ScanIterator
+{
 public:
-  RM_ScanIterator() {};
-  ~RM_ScanIterator() {};
+  RM_ScanIterator(){};
+  ~RM_ScanIterator(){};
 
   // "data" follows the same format as RelationManager::insertTuple()
   RC getNextTuple(RID &rid, void *data) { return RM_EOF; };
   RC close() { return -1; };
 };
 
-
 // Relation Manager
 class RelationManager
 {
 public:
-  static RelationManager* instance();
+  static RelationManager *instance();
 
   RC createCatalog();
 
@@ -56,23 +56,21 @@ public:
   // Scan returns an iterator to allow the caller to go through the results one by one.
   // Do not store entire results in the scan iterator.
   RC scan(const string &tableName,
-      const string &conditionAttribute,
-      const CompOp compOp,                  // comparison type such as "<" and "="
-      const void *value,                    // used in the comparison
-      const vector<string> &attributeNames, // a list of projected attributes
-      RM_ScanIterator &rm_ScanIterator);
+          const string &conditionAttribute,
+          const CompOp compOp,                  // comparison type such as "<" and "="
+          const void *value,                    // used in the comparison
+          const vector<string> &attributeNames, // a list of projected attributes
+          RM_ScanIterator &rm_ScanIterator);
 
-// Extra credit work (10 points)
+  // Extra credit work (10 points)
 public:
   RC addAttribute(const string &tableName, const Attribute &attr);
 
   RC dropAttribute(const string &tableName, const string &attributeName);
 
-
 protected:
   RelationManager();
   ~RelationManager();
-
 };
 
 #endif

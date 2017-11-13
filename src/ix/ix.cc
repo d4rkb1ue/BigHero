@@ -1,11 +1,11 @@
 
 #include "ix.h"
 
-IndexManager* IndexManager::_index_manager = 0;
+IndexManager *IndexManager::_index_manager = 0;
 
-IndexManager* IndexManager::instance()
+IndexManager *IndexManager::instance()
 {
-    if(!_index_manager)
+    if (!_index_manager)
         _index_manager = new IndexManager();
 
     return _index_manager;
@@ -49,19 +49,19 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     return -1;
 }
 
-
 RC IndexManager::scan(IXFileHandle &ixfileHandle,
-        const Attribute &attribute,
-        const void      *lowKey,
-        const void      *highKey,
-        bool			lowKeyInclusive,
-        bool        	highKeyInclusive,
-        IX_ScanIterator &ix_ScanIterator)
+                      const Attribute &attribute,
+                      const void *lowKey,
+                      const void *highKey,
+                      bool lowKeyInclusive,
+                      bool highKeyInclusive,
+                      IX_ScanIterator &ix_ScanIterator)
 {
     return -1;
 }
 
-void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const {
+void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const
+{
 }
 
 IX_ScanIterator::IX_ScanIterator()
@@ -82,7 +82,6 @@ RC IX_ScanIterator::close()
     return -1;
 }
 
-
 IXFileHandle::IXFileHandle()
 {
     ixReadPageCounter = 0;
@@ -96,6 +95,8 @@ IXFileHandle::~IXFileHandle()
 
 RC IXFileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount)
 {
-    return -1;
+    readPageCount = ixReadPageCounter;
+    writePageCount = ixWritePageCounter;
+    appendPageCount = ixAppendPageCounter;
+    return 0;
 }
-

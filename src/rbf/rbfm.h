@@ -12,38 +12,39 @@ using namespace std;
 // Record ID
 typedef struct
 {
-  unsigned pageNum;    // page number
-  unsigned slotNum;    // slot number in the page
+  unsigned pageNum; // page number
+  unsigned slotNum; // slot number in the page
 } RID;
 
-
 // Attribute
-typedef enum { TypeInt = 0, TypeReal, TypeVarChar } AttrType;
+typedef enum { TypeInt = 0,
+               TypeReal,
+               TypeVarChar } AttrType;
 
 typedef unsigned AttrLength;
 
-struct Attribute {
-    string   name;     // attribute name
-    AttrType type;     // attribute type
-    AttrLength length; // attribute length
+struct Attribute
+{
+  string name;       // attribute name
+  AttrType type;     // attribute type
+  AttrLength length; // attribute length
 };
 
 // Comparison Operator (NOT needed for part 1 of the project)
-typedef enum { EQ_OP = 0, // no condition// = 
-           LT_OP,      // <
-           LE_OP,      // <=
-           GT_OP,      // >
-           GE_OP,      // >=
-           NE_OP,      // !=
-           NO_OP       // no condition
+typedef enum { EQ_OP = 0, // no condition// =
+               LT_OP,     // <
+               LE_OP,     // <=
+               GT_OP,     // >
+               GE_OP,     // >=
+               NE_OP,     // !=
+               NO_OP      // no condition
 } CompOp;
-
 
 /********************************************************************************
 The scan iterator is NOT required to be implemented for the part 1 of the project 
 ********************************************************************************/
 
-# define RBFM_EOF (-1)  // end of a scan operator
+#define RBFM_EOF (-1) // end of a scan operator
 
 // RBFM_ScanIterator is an iterator to go through records
 // The way to use it is like the following:
@@ -54,30 +55,30 @@ The scan iterator is NOT required to be implemented for the part 1 of the projec
 //  }
 //  rbfmScanIterator.close();
 
-class RBFM_ScanIterator {
+class RBFM_ScanIterator
+{
 public:
-  RBFM_ScanIterator() {};
-  ~RBFM_ScanIterator() {};
+  RBFM_ScanIterator(){};
+  ~RBFM_ScanIterator(){};
 
-  // Never keep the results in the memory. When getNextRecord() is called, 
+  // Never keep the results in the memory. When getNextRecord() is called,
   // a satisfying record needs to be fetched from the file.
   // "data" follows the same format as RecordBasedFileManager::insertRecord().
   RC getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
   RC close() { return -1; };
 };
 
-
 class RecordBasedFileManager
 {
 public:
-  static RecordBasedFileManager* instance();
+  static RecordBasedFileManager *instance();
 
   RC createFile(const string &fileName);
-  
+
   RC destroyFile(const string &fileName);
-  
+
   RC openFile(const string &fileName, FileHandle &fileHandle);
-  
+
   RC closeFile(FileHandle &fileHandle);
 
   //  Format of the data passed into the function is the following:
@@ -87,7 +88,7 @@ public:
   //     Each bit represents whether each field value is null or not.
   //     If k-th bit from the left is set to 1, k-th field value is null. We do not include anything in the actual data part.
   //     If k-th bit from the left is set to 0, k-th field contains non-null values.
-  //     If there are more than 8 fields, then you need to find the corresponding byte first, 
+  //     If there are more than 8 fields, then you need to find the corresponding byte first,
   //     then find a corresponding bit inside that byte.
   //  2) Actual data is a concatenation of values of the attributes.
   //  3) For Int and Real: use 4 bytes to store the value;
@@ -97,15 +98,15 @@ public:
   RC insertRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, RID &rid);
 
   RC readRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, void *data);
-  
-  // This method will be mainly used for debugging/testing. 
+
+  // This method will be mainly used for debugging/testing.
   // The format is as follows:
   // field1-name: field1-value  field2-name: field2-value ... \n
   // (e.g., age: 24  height: 6.1  salary: 9000
   //        age: NULL  height: 7.5  salary: 7500)
   RC printRecord(const vector<Attribute> &recordDescriptor, const void *data);
 
-/******************************************************************************************************************************************************************
+  /******************************************************************************************************************************************************************
 IMPORTANT, PLEASE READ: All methods below this comment (other than the constructor and destructor) are NOT required to be implemented for the part 1 of the project
 ******************************************************************************************************************************************************************/
   RC deleteRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid);
@@ -115,17 +116,16 @@ IMPORTANT, PLEASE READ: All methods below this comment (other than the construct
 
   RC readAttribute(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, const string &attributeName, void *data);
 
-  // Scan returns an iterator to allow the caller to go through the results one by one. 
+  // Scan returns an iterator to allow the caller to go through the results one by one.
   RC scan(FileHandle &fileHandle,
-      const vector<Attribute> &recordDescriptor,
-      const string &conditionAttribute,
-      const CompOp compOp,                  // comparision type such as "<" and "="
-      const void *value,                    // used in the comparison
-      const vector<string> &attributeNames, // a list of projected attributes
-      RBFM_ScanIterator &rbfm_ScanIterator);
+          const vector<Attribute> &recordDescriptor,
+          const string &conditionAttribute,
+          const CompOp compOp,                  // comparision type such as "<" and "="
+          const void *value,                    // used in the comparison
+          const vector<string> &attributeNames, // a list of projected attributes
+          RBFM_ScanIterator &rbfm_ScanIterator);
 
 public:
-
 protected:
   RecordBasedFileManager();
   ~RecordBasedFileManager();
