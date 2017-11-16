@@ -12,8 +12,18 @@
 class IX_ScanIterator;
 class IXFileHandle;
 
+/****************************************************
+ *                  IndexManager                    *
+ ****************************************************/
 class IndexManager
 {
+  private:
+    PagedFileManager *_pfm;
+    static IndexManager *_index_manager;
+
+  protected:
+    IndexManager();
+    ~IndexManager();
 
   public:
     static IndexManager *instance();
@@ -47,22 +57,15 @@ class IndexManager
 
     // Print the B+ tree in pre-order (in a JSON record format)
     void printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const;
-
-  protected:
-    IndexManager();
-    ~IndexManager();
-
-  private:
-    static IndexManager *_index_manager;
 };
 
+/****************************************************
+ *                  IX_ScanIterator                 *
+ ****************************************************/
 class IX_ScanIterator
 {
   public:
-    // Constructor
     IX_ScanIterator();
-
-    // Destructor
     ~IX_ScanIterator();
 
     // Get next matching entry
@@ -72,16 +75,30 @@ class IX_ScanIterator
     RC close();
 };
 
+/****************************************************
+ *                  IXFileHandle                    *
+ ****************************************************/
 class IXFileHandle
 {
+  private:
+    FileHandle _fileHandle;
+    PagedFileManager *_pfm;
+
   public:
+    string fileName;
     unsigned ixReadPageCounter;
     unsigned ixWritePageCounter;
     unsigned ixAppendPageCounter;
 
+    RC writePage(PageNum pageNum, const void *data, unsigned dataSize);
+    RC appendPage(const void *data, unsigned dataSize);
+    RC readPage(PageNum pageNum, void *data);
+
+    RC closeFile();
+
     IXFileHandle();
-    ~IXFileHandle();
+    IXFileHandle(string indexFileName);
+    ~IXFileHandle(){};
     RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
 };
-
 #endif
