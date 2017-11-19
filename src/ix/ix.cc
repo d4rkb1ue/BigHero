@@ -213,23 +213,26 @@ BTree::BTree(IXFileHandle *fileHandle, AttrType attrType)
         rootPn = 0;
         return;
     }
-    cerr << "first insert shouldn't read any page." << endl;
-    exit(-1);
-    // // if file isn't empty, read meta page
-    // _fileHandle->readPage(0, buffer);
-    // MetaPage meta(buffer);
-    // rootPn = meta.rootPn;
+    // cerr << "first insert shouldn't read any page." << endl;
+    // exit(-1);
 
-    // // read root node
-    // _fileHandle->readPage(rootPn, buffer);
-    // if (meta.rootIsLeaf)
-    // {
-    //     root = new LeafPage(buffer);
-    // }
-    // else
-    // {
-    //     root = new InternalPage(buffer);
-    // }
+    // if file isn't empty, read meta page
+    _fileHandle->readPage(0, buffer);
+    MetaPage meta(buffer);
+    rootPn = meta.rootPn;
+
+    // read root node
+    _fileHandle->readPage(rootPn, buffer);
+    if (meta.rootIsLeaf)
+    {
+        root = new LeafPage(buffer, attrType, nullptr);
+    }
+    else
+    {
+        cerr << "first read shouldn't create internal page." << endl;
+        exit(-1);
+        root = new InternalPage(buffer, attrType, nullptr);
+    }
 }
 
 BTree::~BTree()
@@ -339,6 +342,9 @@ string BTree::toString()
 /****************************************************
  *                    MetaPage                      *
  ****************************************************/
+const string MetaPage::META_PAGE = "META_PAGE:  ";
+const string MetaPage::META_PAGE_END = "META_PAGE_END";
+
 MetaPage::MetaPage(PageNum rootPn, bool rootIsLeaf)
     : rootPn(rootPn),
       rootIsLeaf(rootIsLeaf)
@@ -347,6 +353,8 @@ MetaPage::MetaPage(PageNum rootPn, bool rootIsLeaf)
 
 MetaPage::MetaPage(char *rawData)
 {
+    // for meta page starter
+    rawData += META_PAGE.size();
     memcpy(&rootPn, rawData, sizeof(unsigned));
     rawData += sizeof(unsigned);
     memcpy(&rootIsLeaf, rawData, sizeof(bool));
@@ -355,6 +363,9 @@ MetaPage::MetaPage(char *rawData)
 RC MetaPage::getRawData(char *data)
 {
     memset(data, 0, PAGE_SIZE);
+    memcpy(data, META_PAGE.c_str(), META_PAGE.size());
+    memcpy(data + PAGE_SIZE - META_PAGE_END.size(), META_PAGE_END.c_str(), META_PAGE_END.size());
+    data += META_PAGE.size();
     memcpy(data, &rootPn, sizeof(unsigned));
     data += sizeof(unsigned);
     memcpy(data, &rootIsLeaf, sizeof(bool));
@@ -411,6 +422,8 @@ string InternalPage::toString()
  *  
  *  [isLeaf][next leaf pageNum][entries num][entries...]*
  * 
+ * Leaf Entry:
+ *  [key value][RID.pageNum][RID.slotNum][isDeleted]
  */
 LeafPage::LeafPage(AttrType attrType, InternalPage *parent)
     : NodePage(parent, attrType, LEAF_PAGE_HEADER_SIZE, true),
@@ -420,21 +433,44 @@ LeafPage::LeafPage(AttrType attrType, InternalPage *parent)
 LeafPage::LeafPage(char *rawData, AttrType attrType, InternalPage *parent)
     : NodePage(parent, attrType, LEAF_PAGE_HEADER_SIZE, true)
 {
-    cerr << "should not read leaf page from disk now" << endl;
-    exit(-1);
-    // unsigned entriesNum = 0;
+    // cerr << "should not read leaf page from disk now" << endl;
+    // exit(-1);
 
-    // memcpy(&isLeaf, rawData, sizeof(bool));
-    // rawData += sizeof(bool);
-    // memcpy(&nextPn, rawData, sizeof(PageNum));
-    // rawData += sizeof(PageNum);
-    // memcpy(&entriesNum, rawData, sizeof(unsigned));
-    // rawData += sizeof(unsigned);
+    if (attrType == TypeVarChar)
+    {
+        cerr << endl
+             << "TODO: can't read varchar from disk" << endl;
+        exit(-1);
+    }
 
-    // for (int i = 0; i < entriesNum; i++)
-    // {
-    //     entries.push_bask(new LeafEntry())
-    // }
+    unsigned entriesNum = 0;
+    char keyBuffer[PAGE_SIZE];
+    RID ridBuffer = {0, 0};
+    bool isDeletedBuffer = false;
+
+    memcpy(&isLeaf, rawData, sizeof(bool));
+    rawData += sizeof(bool);
+    memcpy(&nextPn, rawData, sizeof(PageNum));
+    rawData += sizeof(PageNum);
+    memcpy(&entriesNum, rawData, sizeof(unsigned));
+    rawData += sizeof(unsigned);
+
+    for (int i = 0; i < entriesNum; i++)
+    {
+        // TODO: only care about the TypeInt & TypeReal
+        memcpy(keyBuffer, rawData, 4);
+        rawData += 4;
+        memcpy(&ridBuffer.pageNum, rawData, sizeof(unsigned));
+        rawData += sizeof(unsigned);
+        memcpy(&ridBuffer.slotNum, rawData, sizeof(unsigned));
+        rawData += sizeof(unsigned);
+        memcpy(&isDeletedBuffer, rawData, sizeof(bool));
+        rawData += sizeof(bool);
+
+        entries.push_back(new LeafEntry(keyBuffer, 4, ridBuffer, isDeletedBuffer));
+    }
+    // cerr << "Finish reading from leaf page, result: " << endl;
+    // cerr << toString() << endl;
 }
 
 LeafPage::~LeafPage()
@@ -491,6 +527,8 @@ RC LeafPage::getRawData(char *data)
         data += (*it)->size;
         memcpy(data, &((*it)->rid), sizeof(RID));
         data += sizeof(RID);
+        memcpy(data, &((*it)->isDeleted), sizeof(bool));
+        data += sizeof(bool);
     }
     return 0;
 }

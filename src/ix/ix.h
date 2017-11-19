@@ -149,6 +149,8 @@ private:
  ****************************************************/
 class MetaPage
 {
+  const static string META_PAGE;
+  const static string META_PAGE_END;
 public:
   PageNum rootPn;
   bool rootIsLeaf;
