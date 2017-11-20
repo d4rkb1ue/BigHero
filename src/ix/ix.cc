@@ -25,6 +25,15 @@ IndexManager::~IndexManager()
 {
 }
 
+RC IndexManager::assertIXFileHandle(IXFileHandle &ixfileHandle)
+{
+    if (ixfileHandle.fileName.size() == 0)
+    {
+        return -1;
+    }
+    return 0;
+}
+
 RC IndexManager::createFile(const string &fileName)
 {
     return _pfm->createFile(fileName);
@@ -41,18 +50,30 @@ RC IndexManager::openFile(const string &fileName, IXFileHandle &ixfileHandle)
     {
         return -1;
     }
-
     ixfileHandle = IXFileHandle(fileName);
+    if (assertIXFileHandle(ixfileHandle) != 0)
+    {
+        return -1;
+    }
+    // cerr << "openFile return 0, fileName.size() = " << ixfileHandle.fileName.size() << endl;
     return 0;
 }
 
 RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 {
+    if (assertIXFileHandle(ixfileHandle) != 0)
+    {
+        return -1;
+    }
     return ixfileHandle.closeFile();
 }
 
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
+    if (assertIXFileHandle(ixfileHandle) != 0)
+    {
+        return -1;
+    }
     if (attribute.type == TypeVarChar)
     {
         cerr << "can't deal with var char now" << endl;
@@ -70,6 +91,10 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
 
 RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
+    if (assertIXFileHandle(ixfileHandle) != 0)
+    {
+        return -1;
+    }
     if (attribute.type == TypeVarChar)
     {
         cerr << "can't deal with var char now" << endl;
@@ -92,6 +117,10 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
                       bool highKeyInclusive,
                       IX_ScanIterator &ix_ScanIterator)
 {
+    if (assertIXFileHandle(ixfileHandle) != 0)
+    {
+        return -1;
+    }
     if (lowKey || highKey)
     {
         cerr << "TODO: can't deal with lowkey or highkey" << endl;
@@ -283,8 +312,8 @@ IXFileHandle::IXFileHandle(string fileName)
 {
     if (_pfm->openFile(fileName, _fileHandle) != 0)
     {
-        cerr << "Open index file failed." << endl;
-        exit(-1);
+        // cerr << "open index file failed. Set fileName to empty" << endl;
+        this->fileName = "";
     }
 }
 

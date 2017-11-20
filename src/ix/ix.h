@@ -31,6 +31,7 @@ class IndexManager
   protected:
     IndexManager();
     ~IndexManager();
+    RC assertIXFileHandle(IXFileHandle &ixfileHandle);
 
   public:
     static IndexManager *instance();
