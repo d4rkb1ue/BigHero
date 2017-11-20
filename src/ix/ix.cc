@@ -53,11 +53,13 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
-    // TODO: only care about int/real
-    unsigned len = 4;
+    if (attribute.type == TypeVarChar)
+    {
+        cerr << "can't deal with var char now" << endl;
+    }
     char c_key[4];
-    memcpy(c_key, key, len);
-    return ixfileHandle.getTree(attribute.type)->insert(c_key, len, rid);
+    memcpy(c_key, key, 4);
+    return ixfileHandle.getTree(attribute.type)->insert(c_key, rid);
 }
 
 RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
@@ -379,22 +381,26 @@ bool BTree::isEmpty()
 
 // insert
 
-RC BTree::insert(char *key, unsigned len, RID rid)
+RC BTree::insert(char *key, RID rid)
 {
     if (isEmpty())
     {
-        return initNewTree(key, len, rid);
+        return initNewTree(key, rid);
     }
-    return insertToLeaf(key, len, rid);
+    return insertToLeaf(key, rid);
 }
 
-RC BTree::initNewTree(char *key, unsigned len, RID rid)
+RC BTree::initNewTree(char *key, RID rid)
 {
     // appent meta page before append a leaf page
     updateRoot();
 
+    if (attrType == TypeVarChar)
+    {
+        cerr << "can't deal with var char now." << endl;
+    }
     LeafPage *node = new LeafPage(attrType, nullptr);
-    node->insert(key, len, rid);
+    node->insert(key, 4, rid);
     root = node;
 
     // persist
@@ -421,7 +427,7 @@ RC BTree::initNewTree(char *key, unsigned len, RID rid)
     return 0;
 }
 
-RC BTree::insertToLeaf(char *key, unsigned len, RID rid)
+RC BTree::insertToLeaf(char *key, RID rid)
 {
     return -1;
 }
@@ -457,6 +463,20 @@ PageNum BTree::getBeginLeaf()
     {
         cerr << "TODO: can't deal with internal nodes now..." << endl;
         exit(-1);
+    }
+    return rootPn;
+}
+
+PageNum BTree::findExactLeafPage(char *key)
+{
+    if (root->isRoot == 0)
+    {
+        cerr << "can't deal with non-leaf root" << endl;
+        exit(-1);
+    }
+    if (isEmpty())
+    {
+        return 0;
     }
     return rootPn;
 }

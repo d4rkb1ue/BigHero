@@ -149,12 +149,13 @@ class BTree
     ~BTree();
 
     bool isEmpty();
-    RC insert(char *key, unsigned len, RID rid);
-    // RC lazyRemove(char *key, unsigned len);
+    RC insert(char *key, RID rid);
+    // RC lazyRemove(char *key);
 
     PageNum getBeginLeaf();
     // PageNum getEndLeaf();
-    // PageNum findExactLeafPage(char *key, )
+    // return 0: not found, since 0 can't be any data page
+    PageNum findExactLeafPage(char *key);
     // PageNum findLessThanLeafPage();
     // PageNum findGreaterThanLeafPage();
 
@@ -162,8 +163,8 @@ class BTree
     // RC toJSON();
 
   private:
-    RC initNewTree(char *key, unsigned len, RID rid);
-    RC insertToLeaf(char *key, unsigned len, RID rid);
+    RC initNewTree(char *key, RID rid);
+    RC insertToLeaf(char *key, RID rid);
     void updateRoot();
     // RC insertToParent();
 };
