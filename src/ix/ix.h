@@ -178,10 +178,10 @@ class MetaPage
 
   public:
     PageNum rootPn;
-    bool rootIsLeaf;
+    int rootIsLeaf;
 
     MetaPage(char *rawData);
-    MetaPage(PageNum rootPn, bool rootIsLeaf);
+    MetaPage(PageNum rootPn, int rootIsLeaf);
     ~MetaPage(){};
 
     RC getRawData(char *data);
@@ -194,12 +194,12 @@ class NodePage
 {
   public:
     NodePage *parent;
-    bool isRoot;
-    bool isLeaf;
+    int isRoot;
+    int isLeaf;
     AttrType attrType;
     unsigned size;
 
-    NodePage(NodePage *parent, AttrType attrType, unsigned size, bool isLeaf);
+    NodePage(NodePage *parent, AttrType attrType, unsigned size, int isLeaf);
     virtual ~NodePage(){};
 
     bool tooBig() { return size > PAGE_SIZE; };
@@ -283,9 +283,9 @@ class LeafEntry
     char *key;
     unsigned size;
     RID rid;
-    bool isDeleted;
+    int isDeleted;
 
-    LeafEntry(char *key, unsigned len, RID rid = {0, 0}, bool isDeleted = false);
+    LeafEntry(char *key, unsigned len, RID rid = {0, 0}, int isDeleted = 0);
     ~LeafEntry();
 
     int compareTo(LeafEntry *that, AttrType attrType);
