@@ -499,7 +499,26 @@ RC BTree::initNewTree(char *key, RID rid)
 
 RC BTree::insertToLeaf(char *key, RID rid)
 {
-    return -1;
+    if (attrType == TypeVarChar)
+    {
+        cerr << "can't deal with var char now." << endl;
+    }
+    PageNum pn = findExactLeafPage(key);
+    _fileHandle->readPage(pn, buffer);
+    LeafPage lp(buffer, attrType, nullptr);
+    if (lp.size > PAGE_SIZE)
+    {
+        cerr << "insert target leaf page size = " << lp.size << ", more then " << PAGE_SIZE << endl;
+        exit(-1);
+    }
+    if (lp.insert(key, 4, rid) != 0)
+    {
+        return -1;
+    }
+    lp.getRawData(buffer);
+    _fileHandle->writePage(pn, buffer);
+    // cerr << "after insert (" << rid.pageNum << ", " << rid.slotNum << "), page size = " << lp.size << endl;
+    return 0;
 }
 
 // remove

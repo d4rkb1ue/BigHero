@@ -28,6 +28,8 @@ int testCase_6(const string &indexFileName, const Attribute &attribute)
     int inRidSlotNumSum = 0;
     int outRidSlotNumSum = 0;
     unsigned numOfTuples = 1000;
+    // FOR part, without split
+    // unsigned numOfTuples = 10;
 
     // create index file
     RC rc = indexManager->createFile(indexFileName);
@@ -45,6 +47,8 @@ int testCase_6(const string &indexFileName, const Attribute &attribute)
         rid.slotNum = key * 3;
 
         rc = indexManager->insertEntry(ixfileHandle, attribute, &key, rid);
+        // test dup key
+        // rc = indexManager->insertEntry(ixfileHandle, attribute, &key, rid);
         assert(rc == success && "indexManager::insertEntry() should not fail.");
 
         inRidSlotNumSum += rid.slotNum;

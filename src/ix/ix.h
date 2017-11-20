@@ -251,6 +251,7 @@ class LeafPage : public NodePage
 
     RC lookupAndInsert(char *key, unsigned len, RID rid);
     LeafEntry *lookup(char *key);
+    // after insert, the size may over PAGE_SIZE, the caller should take care of it
     RC insert(char *key, unsigned len, RID rid);
     // exact key, with no trimmed
     RC lazyRemove(char *key);
