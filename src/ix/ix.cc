@@ -59,12 +59,29 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     }
     char c_key[4];
     memcpy(c_key, key, 4);
-    return ixfileHandle.getTree(attribute.type)->insert(c_key, rid);
+    if (ixfileHandle.getTree(attribute.type)->insert(c_key, rid) != 0)
+    {
+        return -1;
+    }
+    // every change, shoudle rebuid tree, or there's will an out-of-sync
+    ixfileHandle.rebuidTree(attribute.type);
+    return 0;
 }
 
 RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
-    return -1;
+    if (attribute.type == TypeVarChar)
+    {
+        cerr << "can't deal with var char now" << endl;
+    }
+    char c_key[4];
+    memcpy(c_key, key, 4);
+    if (ixfileHandle.getTree(attribute.type)->lazyRemove(c_key) != 0)
+    {
+        return -1;
+    }
+    ixfileHandle.rebuidTree(attribute.type);
+    return 0;
 }
 
 RC IndexManager::scan(IXFileHandle &ixfileHandle,
@@ -194,6 +211,20 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
         }
     }
     // do shifting
+    // remove all isDeleted
+    vector<LeafEntry *>::iterator it = entries.begin();
+    while (entries.size() > 0 && it != entries.end() && (*it)->isDeleted == 1)
+    {
+        cerr << "erasing entry: " << (*it)->toString(TypeInt) << endl;
+        entries.erase(it);
+        // be careful when delete in cycle!
+        // it should not ++ since it's deleted, the new one will come to current position
+        // it++;
+    }
+    if (entries.size() == 0)
+    {
+        return getNextEntry(rid, key);
+    }
     LeafEntry *first = entries[0];
     rid = first->rid;
     memcpy(key, first->key, first->size);
@@ -265,13 +296,23 @@ IXFileHandle::~IXFileHandle()
     }
 }
 
-BTree *IXFileHandle::getTree(AttrType attrType)
+BTree *IXFileHandle::getTree(AttrType type)
 {
     if (!tree)
     {
-        tree = new BTree(this, attrType);
+        // cerr << "make new BTree..." << endl;
+        tree = new BTree(this, type);
     }
     return tree;
+}
+
+void IXFileHandle::rebuidTree(AttrType type)
+{
+    if (tree)
+    {
+        delete tree;
+        tree = new BTree(this, type);
+    }
 }
 
 RC IXFileHandle::writePage(PageNum pageNum, char *data)
@@ -432,6 +473,24 @@ RC BTree::insertToLeaf(char *key, RID rid)
     return -1;
 }
 
+// remove
+
+RC BTree::lazyRemove(char *key)
+{
+    PageNum pn = findExactLeafPage(key);
+    _fileHandle->readPage(pn, buffer);
+    LeafPage lp(buffer, attrType, nullptr);
+    if (lp.lazyRemove(key) != 0)
+    {
+        // not found
+        return -1;
+    }
+    lp.getRawData(buffer);
+    // write back
+    _fileHandle->writePage(pn, buffer);
+    return 0;
+}
+
 void BTree::updateRoot()
 {
     // no meta page, no root
@@ -585,7 +644,7 @@ LeafPage::LeafPage(AttrType attrType, InternalPage *parent)
 {
 }
 LeafPage::LeafPage(char *rawData, AttrType attrType, InternalPage *parent)
-    : NodePage(parent, attrType, LEAF_PAGE_HEADER_SIZE, 1)
+    : NodePage(parent, attrType, 0, 1)
 {
     // cerr << "should not read leaf page from disk now" << endl;
     // exit(-1);
@@ -597,6 +656,7 @@ LeafPage::LeafPage(char *rawData, AttrType attrType, InternalPage *parent)
         exit(-1);
     }
 
+    char *start = rawData;
     unsigned entriesNum = 0;
     char keyBuffer[PAGE_SIZE];
     RID ridBuffer = {0, 0};
@@ -623,7 +683,8 @@ LeafPage::LeafPage(char *rawData, AttrType attrType, InternalPage *parent)
 
         entries.push_back(new LeafEntry(keyBuffer, 4, ridBuffer, isDeletedBuffer));
     }
-    // cerr << "Finish reading from leaf page, result: " << endl;
+    size = rawData - start;
+    // cerr << "Finish reading leaf page from rawData, size = " << size << ", result: " << endl;
     // cerr << toString() << endl;
 }
 
@@ -657,6 +718,26 @@ RC LeafPage::insert(char *key, unsigned len, RID rid)
     return 0;
 }
 
+RC LeafPage::lazyRemove(char *key)
+{
+    if (entries.size() == 0)
+    {
+        return -1;
+    }
+    LeafEntry e(key, 4);
+    vector<LeafEntry *>::iterator it = entries.begin();
+    for (; it != entries.end() && e.compareTo(*it, attrType) != 0; it++)
+    {
+    }
+    // not found or is already deleted
+    if (it == entries.end() || (*it)->isDeleted == 1)
+    {
+        return -1;
+    }
+    (*it)->isDeleted = 1;
+    return 0;
+}
+
 void LeafPage::cloneRangeFrom(char *key, unsigned len, vector<LeafEntry *> &target)
 {
     LeafEntry e(key, len);
@@ -664,18 +745,18 @@ void LeafPage::cloneRangeFrom(char *key, unsigned len, vector<LeafEntry *> &targ
     for (; it != entries.end() && e.compareTo(*it, attrType) != 0; it++)
     {
     }
-    for (LeafEntry *tmp = *it; it != entries.end(); it++)
+    for (; it != entries.end(); it++)
     {
-        target.push_back(tmp->clone());
+        target.push_back((*it)->clone());
     }
 }
 
 void LeafPage::cloneRangeAll(vector<LeafEntry *> &target)
 {
     vector<LeafEntry *>::iterator it = entries.begin();
-    for (LeafEntry *tmp = *it; it != entries.end(); it++)
+    for (; it != entries.end(); it++)
     {
-        target.push_back(tmp->clone());
+        target.push_back((*it)->clone());
     }
 }
 
@@ -713,6 +794,8 @@ string LeafPage::toString()
     string s = "[";
     for (unsigned i = 0; i < entries.size(); i++)
     {
+        if (entries[i]->isDeleted)
+            continue;
         s += entries[i]->toString(attrType) + ", ";
     }
     s = s.substr(0, s.size() - 2);

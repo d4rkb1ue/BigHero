@@ -121,6 +121,7 @@ class IXFileHandle
     ~IXFileHandle();
 
     BTree *getTree(AttrType type);
+    void rebuidTree(AttrType type);
     // FileHandle won't care the data size anymore, the tree itself can take care
     RC writePage(PageNum pageNum, char *data);
     RC appendPage(char *data);
@@ -150,7 +151,7 @@ class BTree
 
     bool isEmpty();
     RC insert(char *key, RID rid);
-    // RC lazyRemove(char *key);
+    RC lazyRemove(char *key);
 
     PageNum getBeginLeaf();
     // PageNum getEndLeaf();
@@ -236,7 +237,7 @@ class LeafPage : public NodePage
 {
   private:
     // [isLeaf][next leaf pageNum][entries num]
-    const static unsigned LEAF_PAGE_HEADER_SIZE = sizeof(bool) + sizeof(unsigned) * 2;
+    const static unsigned LEAF_PAGE_HEADER_SIZE = sizeof(unsigned) * 3;
 
   public:
     vector<LeafEntry *> entries;
@@ -250,6 +251,8 @@ class LeafPage : public NodePage
     RC lookupAndInsert(char *key, unsigned len, RID rid);
     LeafEntry *lookup(char *key);
     RC insert(char *key, unsigned len, RID rid);
+    // exact key, with no trimmed
+    RC lazyRemove(char *key);
 
     // only clone from the key from EXACTLY IDENTICAL, else nothing will be pushed
     void cloneRangeFrom(char *key, unsigned len, vector<LeafEntry *> &target);

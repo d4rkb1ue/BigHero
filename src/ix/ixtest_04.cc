@@ -70,6 +70,10 @@ int testCase_4(const string &indexFileName, const Attribute &attribute)
     // delete entry again - should fail
     rc = indexManager->deleteEntry(ixfileHandle, attribute, &key, rid);
     assert(rc != success && "indexManager::deleteEntry() should fail.");
+    
+    // print BTree, should be empty
+    cerr << "after remove:";
+    indexManager->printBtree(ixfileHandle, attribute);
 
     // close index file
     rc = indexManager->closeFile(ixfileHandle);
