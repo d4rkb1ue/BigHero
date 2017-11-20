@@ -55,13 +55,9 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
 {
     // TODO: only care about int/real
     unsigned len = 4;
-    char _key[4];
-    const char *ckey = static_cast<const char *>(key);
-    for (int i = 0; i < len; i++)
-    {
-        _key[i] = ckey[i];
-    }
-    return ixfileHandle.getTree(attribute.type)->insert(_key, len, rid);
+    char c_key[4];
+    memcpy(c_key, key, len);
+    return ixfileHandle.getTree(attribute.type)->insert(c_key, len, rid);
 }
 
 RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
@@ -77,7 +73,33 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
                       bool highKeyInclusive,
                       IX_ScanIterator &ix_ScanIterator)
 {
-    return -1;
+    if (lowKey || highKey)
+    {
+        cerr << "TODO: can't deal with lowkey or highkey" << endl;
+        return -1;
+        // find by BTree then start
+        // if findBTree == nullptr, return -1 or something
+    }
+    if (attribute.type == TypeVarChar)
+    {
+        cerr << "TODO: can't deal with VarChar key value" << endl;
+        exit(-1);
+    }
+    char c_lowKey[4];
+    char c_highKey[4];
+    if (lowKey)
+    {
+        memcpy(c_lowKey, lowKey, 4);
+    }
+    if (highKey)
+    {
+        memcpy(c_highKey, highKey, 4);
+    }
+    ix_ScanIterator = IX_ScanIterator(
+        &ixfileHandle, attribute,
+        lowKey ? c_lowKey : nullptr, highKey ? c_highKey : nullptr,
+        lowKeyInclusive, highKeyInclusive);
+    return 0;
 }
 
 void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const
@@ -90,21 +112,120 @@ void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attri
  *                  IX_ScanIterator                 *
  ****************************************************/
 IX_ScanIterator::IX_ScanIterator()
+    : ixfileHandle(nullptr),
+      lowKey(nullptr),
+      highKey(nullptr),
+      lowKeyInclusive(false),
+      highKeyInclusive(false),
+      next(0)
 {
+}
+
+IX_ScanIterator::IX_ScanIterator(
+    IXFileHandle *ixfileHandle, Attribute attr,
+    char *lowKey, char *highKey,
+    bool lowKeyInclusive, bool highKeyInclusive)
+    : ixfileHandle(ixfileHandle),
+      attr(attr),
+      lowKey(nullptr),
+      highKey(nullptr),
+      lowKeyInclusive(lowKeyInclusive),
+      highKeyInclusive(highKeyInclusive)
+{
+    if (lowKey || highKey)
+    {
+        cerr << "TODO: can't deal with lowkey or highkey" << endl;
+        exit(-1);
+    }
+    if (attr.type == TypeVarChar)
+    {
+        cerr << "[IX_ScanIterator]TODO: can't deal with VarChar key value" << endl;
+        exit(-1);
+    }
+    if (lowKey)
+    {
+        this->lowKey = new char[4];
+        memcpy(this->lowKey, lowKey, 4);
+    }
+    if (highKey)
+    {
+        this->highKey = new char[4];
+        memcpy(this->highKey, highKey, 4);
+    }
+    next = ixfileHandle->getTree(attr.type)->getBeginLeaf();
+    getNextLeafPage();
 }
 
 IX_ScanIterator::~IX_ScanIterator()
 {
+    if (lowKey)
+    {
+        delete[] lowKey;
+    }
+    if (highKey)
+    {
+        delete[] highKey;
+    }
+    for (unsigned i = 0; i < entries.size(); i++)
+    {
+        delete entries[i];
+    }
 }
 
 RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
 {
-    return -1;
+    if (lowKey || highKey)
+    {
+        cerr << "TODO: can't deal with lowkey or highkey" << endl;
+        exit(-1);
+    }
+    if (entries.size() == 0)
+    {
+        // cerr << "Scan is end." << endl;
+        if (next == 0)
+        {
+            return IX_EOF;
+        }
+        else
+        {
+            getNextLeafPage();
+        }
+    }
+    // do shifting
+    LeafEntry *first = entries[0];
+    rid = first->rid;
+    memcpy(key, first->key, first->size);
+    entries.erase(entries.begin());
+    return 0;
+}
+
+void IX_ScanIterator::getNextLeafPage()
+{
+    if (lowKey || highKey)
+    {
+        cerr << "TODO: can't deal with lowkey or highkey" << endl;
+        exit(-1);
+    }
+    if (!next)
+    {
+        cerr << "!next, check is required before call getNextLeafPage()" << endl;
+        exit(-1);
+    }
+    ixfileHandle->readPage(next, buffer);
+    // all leaf pages in the scan iterator have no need to know their parent, since we only go next
+    LeafPage lp(buffer, attr.type, nullptr);
+    if (entries.size() > 0)
+    {
+        cerr << "Before get new leaf page's entries, current scan iterator's entries should be empty" << endl;
+        exit(-1);
+    }
+    lp.cloneRangeAll(entries);
+    next = lp.nextPn;
 }
 
 RC IX_ScanIterator::close()
 {
-    return -1;
+    return 0;
 }
 
 /****************************************************
@@ -327,6 +448,19 @@ void BTree::updateRoot()
     _fileHandle->writePage(0, buffer);
 }
 
+// find
+
+PageNum BTree::getBeginLeaf()
+{
+    // can't deal with internal nodes now...
+    if (!root->isLeaf)
+    {
+        cerr << "TODO: can't deal with internal nodes now..." << endl;
+        exit(-1);
+    }
+    return rootPn;
+}
+
 // print
 
 string BTree::toString()
@@ -400,7 +534,7 @@ InternalPage::InternalPage(char *rawData, AttrType attrType, InternalPage *paren
 
 InternalPage::~InternalPage()
 {
-    for (int i = 0; i < entries.size(); i++)
+    for (unsigned i = 0; i < entries.size(); i++)
     {
         delete entries[i];
     }
@@ -455,7 +589,7 @@ LeafPage::LeafPage(char *rawData, AttrType attrType, InternalPage *parent)
     memcpy(&entriesNum, rawData, sizeof(unsigned));
     rawData += sizeof(unsigned);
 
-    for (int i = 0; i < entriesNum; i++)
+    for (unsigned i = 0; i < entriesNum; i++)
     {
         // TODO: only care about the TypeInt & TypeReal
         memcpy(keyBuffer, rawData, 4);
@@ -475,7 +609,7 @@ LeafPage::LeafPage(char *rawData, AttrType attrType, InternalPage *parent)
 
 LeafPage::~LeafPage()
 {
-    for (int i = 0; i < entries.size(); i++)
+    for (unsigned i = 0; i < entries.size(); i++)
     {
         delete entries[i];
     }
@@ -494,14 +628,35 @@ LeafEntry *LeafPage::lookup(char *key)
 RC LeafPage::insert(char *key, unsigned len, RID rid)
 {
     LeafEntry *e = new LeafEntry(key, len, rid);
-    auto it2ptr = entries.begin();
-    auto end = entries.end();
-    for (; it2ptr != end && e->compareTo(*it2ptr, attrType) > 0; it2ptr++)
+    vector<LeafEntry *>::iterator it2ptr = entries.begin();
+    for (; it2ptr != entries.end() && e->compareTo(*it2ptr, attrType) > 0; it2ptr++)
     {
     }
     entries.insert(it2ptr, e);
     size += len + sizeof(RID);
     return 0;
+}
+
+void LeafPage::cloneRangeFrom(char *key, unsigned len, vector<LeafEntry *> &target)
+{
+    LeafEntry e(key, len);
+    vector<LeafEntry *>::iterator it = entries.begin();
+    for (; it != entries.end() && e.compareTo(*it, attrType) != 0; it++)
+    {
+    }
+    for (LeafEntry *tmp = *it; it != entries.end(); it++)
+    {
+        target.push_back(tmp->clone());
+    }
+}
+
+void LeafPage::cloneRangeAll(vector<LeafEntry *> &target)
+{
+    vector<LeafEntry *>::iterator it = entries.begin();
+    for (LeafEntry *tmp = *it; it != entries.end(); it++)
+    {
+        target.push_back(tmp->clone());
+    }
 }
 
 RC LeafPage::getRawData(char *data)
@@ -536,7 +691,7 @@ RC LeafPage::getRawData(char *data)
 string LeafPage::toString()
 {
     string s = "[";
-    for (int i = 0; i < entries.size(); i++)
+    for (unsigned i = 0; i < entries.size(); i++)
     {
         s += entries[i]->toString(attrType) + ", ";
     }
@@ -615,20 +770,27 @@ int LeafEntry::compareTo(LeafEntry *that, AttrType attrType)
     return 0;
 }
 
+LeafEntry *LeafEntry::clone()
+{
+    // cerr << "cloning: " << *((int *)key) << ", " << rid.pageNum << ", " << rid.slotNum << endl;
+    LeafEntry *e = new LeafEntry(key, size, rid, isDeleted);
+    return e;
+}
+
 string LeafEntry::toString(AttrType attrType)
 {
     string s_rid = "(" + to_string(rid.pageNum) + "," + to_string(rid.slotNum) + ")";
+    int _int = 0;
+    float _f = 0.0;
     switch (attrType)
     {
     case TypeInt:
     {
-        int _int = 0;
         memcpy(&_int, key, sizeof(int));
         return to_string(_int) + ":" + s_rid;
     }
     case TypeReal:
     {
-        float _f = 0.0;
         memcpy(&_f, key, sizeof(float));
         return to_string(_f) + ":" + s_rid;
     }
@@ -637,4 +799,5 @@ string LeafEntry::toString(AttrType attrType)
         return "[varchar..]";
     }
     }
+    return "";
 }

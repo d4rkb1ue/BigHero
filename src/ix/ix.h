@@ -24,46 +24,46 @@ class LeafEntry;
  ****************************************************/
 class IndexManager
 {
-private:
-  PagedFileManager *_pfm;
-  static IndexManager *_index_manager;
+  private:
+    PagedFileManager *_pfm;
+    static IndexManager *_index_manager;
 
-protected:
-  IndexManager();
-  ~IndexManager();
+  protected:
+    IndexManager();
+    ~IndexManager();
 
-public:
-  static IndexManager *instance();
+  public:
+    static IndexManager *instance();
 
-  // Create an index file.
-  RC createFile(const string &fileName);
+    // Create an index file.
+    RC createFile(const string &fileName);
 
-  // Delete an index file.
-  RC destroyFile(const string &fileName);
+    // Delete an index file.
+    RC destroyFile(const string &fileName);
 
-  // Open an index and return an ixfileHandle.
-  RC openFile(const string &fileName, IXFileHandle &ixfileHandle);
+    // Open an index and return an ixfileHandle.
+    RC openFile(const string &fileName, IXFileHandle &ixfileHandle);
 
-  // Close an ixfileHandle for an index.
-  RC closeFile(IXFileHandle &ixfileHandle);
+    // Close an ixfileHandle for an index.
+    RC closeFile(IXFileHandle &ixfileHandle);
 
-  // Insert an entry into the given index that is indicated by the given ixfileHandle.
-  RC insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid);
+    // Insert an entry into the given index that is indicated by the given ixfileHandle.
+    RC insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid);
 
-  // Delete an entry from the given index that is indicated by the given ixfileHandle.
-  RC deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid);
+    // Delete an entry from the given index that is indicated by the given ixfileHandle.
+    RC deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid);
 
-  // Initialize and IX_ScanIterator to support a range search
-  RC scan(IXFileHandle &ixfileHandle,
-          const Attribute &attribute,
-          const void *lowKey,
-          const void *highKey,
-          bool lowKeyInclusive,
-          bool highKeyInclusive,
-          IX_ScanIterator &ix_ScanIterator);
+    // Initialize and IX_ScanIterator to support a range search
+    RC scan(IXFileHandle &ixfileHandle,
+            const Attribute &attribute,
+            const void *lowKey,
+            const void *highKey,
+            bool lowKeyInclusive,
+            bool highKeyInclusive,
+            IX_ScanIterator &ix_ScanIterator);
 
-  // Print the B+ tree in pre-order (in a JSON record format)
-  void printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const;
+    // Print the B+ tree in pre-order (in a JSON record format)
+    void printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const;
 };
 
 /****************************************************
@@ -71,15 +71,32 @@ public:
  ****************************************************/
 class IX_ScanIterator
 {
-public:
-  IX_ScanIterator();
-  ~IX_ScanIterator();
+  private:
+    IXFileHandle *ixfileHandle;
+    Attribute attr;
+    char *lowKey;
+    char *highKey;
+    bool lowKeyInclusive;
+    bool highKeyInclusive;
+    // legal next should always > 0, since No.0 is Meta page
+    PageNum next;
+    vector<LeafEntry *> entries;
+    char buffer[PAGE_SIZE];
 
-  // Get next matching entry
-  RC getNextEntry(RID &rid, void *key);
+  public:
+    IX_ScanIterator();
+    IX_ScanIterator(
+        IXFileHandle *ixfileHandle, Attribute attr,
+        char *lowKey, char *highKey,
+        bool lowKeyInclusive, bool highKeyInclusive);
+    ~IX_ScanIterator();
 
-  // Terminate index scan
-  RC close();
+    // Get next matching entry
+    RC getNextEntry(RID &rid, void *key);
+    void getNextLeafPage();
+
+    // Terminate index scan
+    RC close();
 };
 
 /****************************************************
@@ -87,31 +104,31 @@ public:
  ****************************************************/
 class IXFileHandle
 {
-private:
-  BTree *tree;
+  private:
+    BTree *tree;
 
-public:
-  FileHandle _fileHandle;
-  PagedFileManager *_pfm;
-  string fileName;
+  public:
+    FileHandle _fileHandle;
+    PagedFileManager *_pfm;
+    string fileName;
 
-  unsigned ixReadPageCounter;
-  unsigned ixWritePageCounter;
-  unsigned ixAppendPageCounter;
+    unsigned ixReadPageCounter;
+    unsigned ixWritePageCounter;
+    unsigned ixAppendPageCounter;
 
-  IXFileHandle();
-  IXFileHandle(string fileName);
-  ~IXFileHandle();
+    IXFileHandle();
+    IXFileHandle(string fileName);
+    ~IXFileHandle();
 
-  BTree *getTree(AttrType type);
-  // FileHandle won't care the data size anymore, the tree itself can take care
-  RC writePage(PageNum pageNum, char *data);
-  RC appendPage(char *data);
-  RC appendPage(char *data, PageNum &pageNum);
-  RC readPage(PageNum pageNum, char *data);
-  unsigned getNumberOfPages();
-  RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
-  RC closeFile();
+    BTree *getTree(AttrType type);
+    // FileHandle won't care the data size anymore, the tree itself can take care
+    RC writePage(PageNum pageNum, char *data);
+    RC appendPage(char *data);
+    RC appendPage(char *data, PageNum &pageNum);
+    RC readPage(PageNum pageNum, char *data);
+    unsigned getNumberOfPages();
+    RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
+    RC closeFile();
 };
 
 /****************************************************
@@ -119,29 +136,36 @@ public:
  ****************************************************/
 class BTree
 {
-private:
-  char buffer[PAGE_SIZE];
+  private:
+    char buffer[PAGE_SIZE];
 
-public:
-  NodePage *root;
-  PageNum rootPn;
-  IXFileHandle *_fileHandle;
-  AttrType attrType;
+  public:
+    NodePage *root;
+    PageNum rootPn;
+    IXFileHandle *_fileHandle;
+    AttrType attrType;
 
-  BTree(IXFileHandle *fileHandle, AttrType attrType);
-  ~BTree();
+    BTree(IXFileHandle *fileHandle, AttrType attrType);
+    ~BTree();
 
-  bool isEmpty();
-  RC insert(char *key, unsigned len, RID rid);
-  // RC lazyRemove(char *key, unsigned len);
-  // RC toJSON();
-  string toString();
+    bool isEmpty();
+    RC insert(char *key, unsigned len, RID rid);
+    // RC lazyRemove(char *key, unsigned len);
 
-private:
-  RC initNewTree(char *key, unsigned len, RID rid);
-  RC insertToLeaf(char *key, unsigned len, RID rid);
-  void updateRoot();
-  // RC insertToParent();
+    PageNum getBeginLeaf();
+    // PageNum getEndLeaf();
+    // PageNum findExactLeafPage(char *key, )
+    // PageNum findLessThanLeafPage();
+    // PageNum findGreaterThanLeafPage();
+
+    string toString();
+    // RC toJSON();
+
+  private:
+    RC initNewTree(char *key, unsigned len, RID rid);
+    RC insertToLeaf(char *key, unsigned len, RID rid);
+    void updateRoot();
+    // RC insertToParent();
 };
 
 /****************************************************
@@ -149,17 +173,18 @@ private:
  ****************************************************/
 class MetaPage
 {
-  const static string META_PAGE;
-  const static string META_PAGE_END;
-public:
-  PageNum rootPn;
-  bool rootIsLeaf;
+    const static string META_PAGE;
+    const static string META_PAGE_END;
 
-  MetaPage(char *rawData);
-  MetaPage(PageNum rootPn, bool rootIsLeaf);
-  ~MetaPage(){};
+  public:
+    PageNum rootPn;
+    bool rootIsLeaf;
 
-  RC getRawData(char *data);
+    MetaPage(char *rawData);
+    MetaPage(PageNum rootPn, bool rootIsLeaf);
+    ~MetaPage(){};
+
+    RC getRawData(char *data);
 };
 
 /****************************************************
@@ -167,19 +192,19 @@ public:
  ****************************************************/
 class NodePage
 {
-public:
-  NodePage *parent;
-  bool isRoot;
-  bool isLeaf;
-  AttrType attrType;
-  unsigned size;
+  public:
+    NodePage *parent;
+    bool isRoot;
+    bool isLeaf;
+    AttrType attrType;
+    unsigned size;
 
-  NodePage(NodePage *parent, AttrType attrType, unsigned size, bool isLeaf);
-  virtual ~NodePage(){};
+    NodePage(NodePage *parent, AttrType attrType, unsigned size, bool isLeaf);
+    virtual ~NodePage(){};
 
-  bool tooBig() { return size > PAGE_SIZE; };
-  virtual RC getRawData(char *data) = 0;
-  virtual string toString() = 0;
+    bool tooBig() { return size > PAGE_SIZE; };
+    virtual RC getRawData(char *data) = 0;
+    virtual string toString() = 0;
 };
 
 /****************************************************
@@ -187,16 +212,16 @@ public:
  ****************************************************/
 class InternalPage : public NodePage
 {
-private:
-  vector<InternalEntry *> entries;
+  private:
+    vector<InternalEntry *> entries;
 
-public:
-  InternalPage(AttrType attrType, InternalPage *parent);
-  InternalPage(char *rawData, AttrType attrType, InternalPage *parent);
-  ~InternalPage();
+  public:
+    InternalPage(AttrType attrType, InternalPage *parent);
+    InternalPage(char *rawData, AttrType attrType, InternalPage *parent);
+    ~InternalPage();
 
-  RC getRawData(char *data) override;
-  string toString() override;
+    RC getRawData(char *data) override;
+    string toString() override;
 };
 
 /****************************************************
@@ -208,23 +233,31 @@ public:
  */
 class LeafPage : public NodePage
 {
-  // [isLeaf][next leaf pageNum][entries num]
-  const static unsigned LEAF_PAGE_HEADER_SIZE = sizeof(bool) + sizeof(unsigned) * 2;
-  vector<LeafEntry *> entries;
-  // 0: no nextPn, since pageNum of meta page is 0
-  PageNum *nextPn;
+  private:
+    // [isLeaf][next leaf pageNum][entries num]
+    const static unsigned LEAF_PAGE_HEADER_SIZE = sizeof(bool) + sizeof(unsigned) * 2;
 
-public:
-  LeafPage(AttrType attrType, InternalPage *parent);
-  LeafPage(char *rawData, AttrType attrType, InternalPage *parent);
-  ~LeafPage();
+  public:
+    vector<LeafEntry *> entries;
+    // 0: no nextPn, since pageNum of meta page is 0
+    PageNum nextPn;
 
-  RC lookupAndInsert(char *key, unsigned len, RID rid);
-  LeafEntry *lookup(char *key);
-  RC insert(char *key, unsigned len, RID rid);
+    LeafPage(AttrType attrType, InternalPage *parent);
+    LeafPage(char *rawData, AttrType attrType, InternalPage *parent);
+    ~LeafPage();
 
-  RC getRawData(char *data) override;
-  string toString() override;
+    RC lookupAndInsert(char *key, unsigned len, RID rid);
+    LeafEntry *lookup(char *key);
+    RC insert(char *key, unsigned len, RID rid);
+
+    // only clone from the key from EXACTLY IDENTICAL, else nothing will be pushed
+    void cloneRangeFrom(char *key, unsigned len, vector<LeafEntry *> &target);
+    void cloneRangeAll(vector<LeafEntry *> &target);
+    // void cloneRangeTo(char *key, unsigned len, vector<LeafEntry *> &target);
+    // void cloneRangeFromTo(char *key, unsigned len, vector<LeafEntry *> &target);
+
+    RC getRawData(char *data) override;
+    string toString() override;
 };
 
 /****************************************************
@@ -232,13 +265,13 @@ public:
  ****************************************************/
 class InternalEntry
 {
-public:
-  char *key;
-  unsigned size;
-  PageNum ptrNum;
+  public:
+    char *key;
+    unsigned size;
+    PageNum ptrNum;
 
-  InternalEntry(char *key, unsigned len, PageNum ptrNum);
-  ~InternalEntry();
+    InternalEntry(char *key, unsigned len, PageNum ptrNum);
+    ~InternalEntry();
 };
 
 /****************************************************
@@ -246,17 +279,18 @@ public:
  ****************************************************/
 class LeafEntry
 {
-public:
-  char *key;
-  unsigned size;
-  RID rid;
-  bool isDeleted;
+  public:
+    char *key;
+    unsigned size;
+    RID rid;
+    bool isDeleted;
 
-  LeafEntry(char *key, unsigned len, RID rid, bool isDeleted = false);
-  ~LeafEntry();
+    LeafEntry(char *key, unsigned len, RID rid = {0, 0}, bool isDeleted = false);
+    ~LeafEntry();
 
-  int compareTo(LeafEntry *that, AttrType attrType);
-  string toString(AttrType attrType);
+    int compareTo(LeafEntry *that, AttrType attrType);
+    LeafEntry *clone();
+    string toString(AttrType attrType);
 };
 
 #endif
