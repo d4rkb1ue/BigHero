@@ -275,7 +275,7 @@ void IX_ScanIterator::getNextLeafPage()
     }
     ixfileHandle->readPage(next, buffer);
     // all leaf pages in the scan iterator have no need to know their parent, since we only go next
-    LeafPage lp(buffer, attr.type, nullptr);
+    LeafPage lp(buffer, attr.type);
     if (entries.size() > 0)
     {
         cerr << "Before get new leaf page's entries, current scan iterator's entries should be empty" << endl;
@@ -418,13 +418,13 @@ BTree::BTree(IXFileHandle *fileHandle, AttrType attrType)
     _fileHandle->readPage(rootPn, buffer);
     if (meta.rootIsLeaf)
     {
-        root = new LeafPage(buffer, attrType, nullptr);
+        root = new LeafPage(buffer, attrType);
     }
     else
     {
         cerr << "first read shouldn't create internal page." << endl;
         exit(-1);
-        root = new InternalPage(buffer, attrType, nullptr);
+        root = new InternalPage(buffer, attrType);
     }
 }
 
@@ -469,7 +469,7 @@ RC BTree::initNewTree(char *key, RID rid)
     {
         cerr << "can't deal with var char now." << endl;
     }
-    LeafPage *node = new LeafPage(attrType, nullptr);
+    LeafPage *node = new LeafPage(attrType, 0);
     node->insert(key, 4, rid);
     root = node;
 
@@ -505,7 +505,7 @@ RC BTree::insertToLeaf(char *key, RID rid)
     }
     PageNum pn = findExactLeafPage(key);
     _fileHandle->readPage(pn, buffer);
-    LeafPage lp(buffer, attrType, nullptr);
+    LeafPage lp(buffer, attrType);
     if (lp.size > PAGE_SIZE)
     {
         cerr << "insert target leaf page size = " << lp.size << ", more then " << PAGE_SIZE << endl;
@@ -527,7 +527,7 @@ RC BTree::lazyRemove(char *key)
 {
     PageNum pn = findExactLeafPage(key);
     _fileHandle->readPage(pn, buffer);
-    LeafPage lp(buffer, attrType, nullptr);
+    LeafPage lp(buffer, attrType);
     if (lp.lazyRemove(key) != 0)
     {
         // not found
@@ -576,7 +576,7 @@ PageNum BTree::getBeginLeaf()
 
 PageNum BTree::findExactLeafPage(char *key)
 {
-    if (root->isRoot == 0)
+    if (root->isLeaf == 0)
     {
         cerr << "can't deal with non-leaf root" << endl;
         exit(-1);
@@ -636,9 +636,9 @@ RC MetaPage::getRawData(char *data)
 /****************************************************
  *                    NodePage                      *
  ****************************************************/
-NodePage::NodePage(NodePage *parent, AttrType attrType, unsigned size, int isLeaf)
-    : parent(parent),
-      isRoot(parent == nullptr ? 1 : 0),
+NodePage::NodePage(PageNum parentPn, AttrType attrType, unsigned size, int isLeaf)
+    : parentPn(parentPn),
+      isRoot(parentPn == 0 ? 1 : 0),
       isLeaf(isLeaf),
       attrType(attrType),
       size(size)
@@ -648,12 +648,12 @@ NodePage::NodePage(NodePage *parent, AttrType attrType, unsigned size, int isLea
 /****************************************************
  *                  InternalPage                    *
  ****************************************************/
-InternalPage::InternalPage(AttrType attrType, InternalPage *parent)
-    : NodePage(parent, attrType, 0, 0)
+InternalPage::InternalPage(AttrType attrType, PageNum parentPn)
+    : NodePage(parentPn, attrType, 0, 0)
 {
 }
-InternalPage::InternalPage(char *rawData, AttrType attrType, InternalPage *parent)
-    : NodePage(parent, attrType, 0, 0)
+InternalPage::InternalPage(char *rawData, AttrType attrType)
+    : NodePage(parentPn, attrType, 0, 0)
 {
     cerr << "should not make internal now.." << endl;
     exit(-1);
@@ -681,18 +681,18 @@ string InternalPage::toString()
  *                    LeafPage                      *
  ****************************************************
  *  
- *  [isLeaf][next leaf pageNum][entries num][entries...]*
+ *  [isLeaf][parent PageNum][next leaf pageNum][entries num][entries...]*
  * 
  * Leaf Entry:
  *  [key value][RID.pageNum][RID.slotNum][isDeleted]
  */
-LeafPage::LeafPage(AttrType attrType, InternalPage *parent)
-    : NodePage(parent, attrType, LEAF_PAGE_HEADER_SIZE, 1),
+LeafPage::LeafPage(AttrType attrType, PageNum parentPn)
+    : NodePage(parentPn, attrType, LEAF_PAGE_HEADER_SIZE, 1),
       nextPn(0)
 {
 }
-LeafPage::LeafPage(char *rawData, AttrType attrType, InternalPage *parent)
-    : NodePage(parent, attrType, 0, 1)
+LeafPage::LeafPage(char *rawData, AttrType attrType)
+    : NodePage(parentPn, attrType, 0, 1)
 {
     // cerr << "should not read leaf page from disk now" << endl;
     // exit(-1);
@@ -712,6 +712,8 @@ LeafPage::LeafPage(char *rawData, AttrType attrType, InternalPage *parent)
 
     memcpy(&isLeaf, rawData, sizeof(int));
     rawData += sizeof(int);
+    memcpy(&(this->parentPn), rawData, sizeof(PageNum));
+    rawData += sizeof(PageNum);
     memcpy(&nextPn, rawData, sizeof(PageNum));
     rawData += sizeof(PageNum);
     memcpy(&entriesNum, rawData, sizeof(unsigned));
@@ -812,6 +814,7 @@ RC LeafPage::getRawData(char *data)
 {
     if (tooBig())
     {
+        cerr << "raw data > PAGE_SIZE" << endl;
         return -1;
     }
 
@@ -820,8 +823,10 @@ RC LeafPage::getRawData(char *data)
 
     memcpy(data, &isLeaf, sizeof(int));
     data += sizeof(int);
-    memcpy(data, &nextPn, sizeof(unsigned));
-    data += sizeof(unsigned);
+    memcpy(data, &(this->parentPn), sizeof(PageNum));
+    data += sizeof(PageNum);
+    memcpy(data, &nextPn, sizeof(PageNum));
+    data += sizeof(PageNum);
     memcpy(data, &entryNum, sizeof(unsigned));
     data += sizeof(unsigned);
 

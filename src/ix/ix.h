@@ -196,13 +196,14 @@ class MetaPage
 class NodePage
 {
   public:
-    NodePage *parent;
+    // 0: not parent node. Aka, I'm the root
+    PageNum parentPn;
     int isRoot;
     int isLeaf;
     AttrType attrType;
     unsigned size;
 
-    NodePage(NodePage *parent, AttrType attrType, unsigned size, int isLeaf);
+    NodePage(PageNum parentPn, AttrType attrType, unsigned size, int isLeaf);
     virtual ~NodePage(){};
 
     bool tooBig() { return size > PAGE_SIZE; };
@@ -219,8 +220,8 @@ class InternalPage : public NodePage
     vector<InternalEntry *> entries;
 
   public:
-    InternalPage(AttrType attrType, InternalPage *parent);
-    InternalPage(char *rawData, AttrType attrType, InternalPage *parent);
+    InternalPage(AttrType attrType, PageNum parentPn);
+    InternalPage(char *rawData, AttrType attrType);
     ~InternalPage();
 
     RC getRawData(char *data) override;
@@ -231,22 +232,24 @@ class InternalPage : public NodePage
  *                    LeafPage                      *
  ****************************************************
  *  
- *  [isLeaf][next leaf pageNum][entries num][entry1][entry2]...
+ *  [isLeaf][parent PageNum][next leaf pageNum][entries num][entries...]*
  * 
+ * Leaf Entry:
+ *  [key value][RID.pageNum][RID.slotNum][isDeleted]
  */
 class LeafPage : public NodePage
 {
   private:
-    // [isLeaf][next leaf pageNum][entries num]
-    const static unsigned LEAF_PAGE_HEADER_SIZE = sizeof(unsigned) * 3;
+    // [isLeaf][parent PageNum][next leaf pageNum][entries num]
+    const static unsigned LEAF_PAGE_HEADER_SIZE = sizeof(unsigned) * 4;
 
   public:
     vector<LeafEntry *> entries;
     // 0: no nextPn, since pageNum of meta page is 0
     PageNum nextPn;
 
-    LeafPage(AttrType attrType, InternalPage *parent);
-    LeafPage(char *rawData, AttrType attrType, InternalPage *parent);
+    LeafPage(AttrType attrType, PageNum parentPn);
+    LeafPage(char *rawData, AttrType attrType);
     ~LeafPage();
 
     RC lookupAndInsert(char *key, unsigned len, RID rid);
