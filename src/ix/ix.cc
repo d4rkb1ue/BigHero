@@ -200,6 +200,11 @@ IX_ScanIterator::IX_ScanIterator(
         this->highKey = new char[4];
         memcpy(this->highKey, highKey, 4);
     }
+    if (ixfileHandle->getTree(attr.type)->isEmpty())
+    {
+        cerr << "empty tree, nothing to do" << endl;
+        exit(-1);
+    }
     next = ixfileHandle->getTree(attr.type)->getBeginLeaf();
     getNextLeafPage();
 }
@@ -422,10 +427,13 @@ BTree::BTree(IXFileHandle *fileHandle, AttrType attrType)
     }
     else
     {
-        cerr << "first read shouldn't create internal page." << endl;
-        exit(-1);
         root = new InternalPage(buffer, attrType);
     }
+
+    // cerr << endl
+    //      << "finish reloading tree: " <<  endl
+    //      << "rootRn - " << rootPn << endl
+    //      << toString() << endl;
 }
 
 BTree::~BTree()
@@ -504,16 +512,47 @@ RC BTree::insertToLeaf(char *key, RID rid)
         cerr << "can't deal with var char now." << endl;
     }
     PageNum pn = findExactLeafPage(key);
+    if (pn == 0)
+    {
+        cerr << "find 0?" << endl;
+        return -1;
+    }
     _fileHandle->readPage(pn, buffer);
     LeafPage lp(buffer, attrType);
-    if (lp.size > PAGE_SIZE)
-    {
-        cerr << "insert target leaf page size = " << lp.size << ", more then " << PAGE_SIZE << endl;
-        exit(-1);
-    }
+    lp.pageNum = pn;
+
     if (lp.insert(key, 4, rid) != 0)
     {
+        cerr << "insert to leaf failed." << endl;
         return -1;
+    }
+    if (lp.tooBig())
+    {
+        // do split
+        LeafPage newLeaf(attrType, lp.parentPn);
+        PageNum newPn = 0;
+
+        // make new leaf page
+        lp.moveHalfTo(newLeaf);
+        newLeaf.nextPn = lp.nextPn;
+
+        // persist
+        newLeaf.getRawData(buffer);
+        _fileHandle->appendPage(buffer, newPn);
+        lp.nextPn = newPn;
+        newLeaf.pageNum = newPn;
+
+        // pop up
+        insertToParent(&lp, newLeaf.entries[0]->key, &newLeaf);
+        // since after pop up, the newLeaf's parent may change
+        newLeaf.getRawData(buffer);
+        _fileHandle->writePage(newPn, buffer);
+
+        // cerr << endl
+        //      << "after split: " << endl
+        //      << "rootPn - " << rootPn << endl
+        //      << "old pn - " << pn << endl
+        //      << "new pn - " << newPn << endl;
     }
     lp.getRawData(buffer);
     _fileHandle->writePage(pn, buffer);
@@ -521,11 +560,73 @@ RC BTree::insertToLeaf(char *key, RID rid)
     return 0;
 }
 
+void BTree::insertToParent(NodePage *oldNode, char *midKey, NodePage *newNode)
+{
+    // make sure the pageNum for both is valid
+    if (oldNode->pageNum == 0 || newNode->pageNum == 0)
+    {
+        cerr << "insertToParent func need know both page's pageNum" << endl;
+        exit(-1);
+    }
+    if (attrType == TypeVarChar)
+    {
+        cerr << "can't deal with var char now." << endl;
+        exit(-1);
+    }
+
+    // is root
+    if (oldNode->parentPn == 0)
+    {
+        // should new, since we'll keep it as root
+        InternalPage *newIndex = new InternalPage(attrType, 0);
+        root = newIndex;
+        
+        // append page and get pageNum
+        newIndex->getRawData(buffer);
+        _fileHandle->appendPage(buffer, rootPn);
+        oldNode->parentPn = rootPn;
+        newNode->parentPn = rootPn;
+        newIndex->initFirstEntry(oldNode->pageNum, midKey, 4, newNode->pageNum);
+
+        // persist new data
+        newIndex->getRawData(buffer);
+        _fileHandle->writePage(rootPn, buffer);
+    }
+    else
+    {
+        PageNum parentPn = oldNode->parentPn;
+        newNode->parentPn = parentPn;
+
+        // get it's parent
+        _fileHandle->readPage(parentPn, buffer);
+        InternalPage parent(buffer, attrType);
+        
+        // insert
+        parent.insertAfter(oldNode->pageNum, midKey, 4, newNode->pageNum);
+
+        // may need resursive call
+        if (parent.tooBig())
+        {
+            cerr << "TODO: internal page over size" << endl;
+            exit(-1);
+        }
+
+        // persist updating
+        parent.getRawData(buffer);
+        _fileHandle->writePage(parentPn, buffer);
+    }
+    updateRoot();
+}
+
 // remove
 
 RC BTree::lazyRemove(char *key)
 {
     PageNum pn = findExactLeafPage(key);
+    if (pn == 0)
+    {
+        return -1;
+    }
     _fileHandle->readPage(pn, buffer);
     LeafPage lp(buffer, attrType);
     if (lp.lazyRemove(key) != 0)
@@ -565,27 +666,76 @@ void BTree::updateRoot()
 
 PageNum BTree::getBeginLeaf()
 {
-    // can't deal with internal nodes now...
-    if (!root->isLeaf)
-    {
-        cerr << "TODO: can't deal with internal nodes now..." << endl;
-        exit(-1);
-    }
-    return rootPn;
-}
-
-PageNum BTree::findExactLeafPage(char *key)
-{
-    if (root->isLeaf == 0)
-    {
-        cerr << "can't deal with non-leaf root" << endl;
-        exit(-1);
-    }
     if (isEmpty())
     {
         return 0;
     }
-    return rootPn;
+    if (root->isLeaf)
+    {
+        return rootPn;
+    }
+    PageNum nodePn = rootPn;
+    while (true)
+    {
+        _fileHandle->readPage(nodePn, buffer);
+
+        // find if is leaf or not
+        int isLeafBuffer = 0;
+        memcpy(&isLeafBuffer, buffer, sizeof(int));
+        if (isLeafBuffer == 1)
+        {
+            return nodePn;
+        }
+        InternalPage ip(buffer, attrType);
+        if (ip.entries.size() < 2)
+        {
+            cerr << "empty internal page found?" << endl;
+            exit(-1);
+        }
+
+        // left most dummy entry
+        nodePn = ip.entries[0]->ptrNum;
+    }
+}
+
+PageNum BTree::findExactLeafPage(char *key)
+{
+    // cout << "findExactLeafPage" << endl;
+    if (isEmpty())
+    {
+        return 0;
+    }
+    if (root->isLeaf)
+    {
+        return rootPn;
+    }
+    if (attrType == TypeVarChar)
+    {
+        cerr << "can't deal with var char now." << endl;
+        exit(-1);
+    }
+    PageNum pn = rootPn;
+    while (true)
+    {
+        _fileHandle->readPage(pn, buffer);
+
+        // find if is leaf or not
+        int isLeafBuffer = 0;
+        memcpy(&isLeafBuffer, buffer, sizeof(int));
+        if (isLeafBuffer == 1)
+        {
+            // cerr << "return " << pn << endl;
+            return pn;
+        }
+        InternalPage ip(buffer, attrType);
+        if (ip.entries.size() < 2)
+        {
+            cerr << "empty internal page found?" << endl;
+            exit(-1);
+        }
+
+        pn = ip.lookup(key, 4);
+    }
 }
 
 // print
@@ -596,7 +746,30 @@ string BTree::toString()
     {
         return "[0_EMPTY_TREE_0]";
     }
-    string s = "[" + root->toString() + "]";
+    string s = "{\n" + pageToString(rootPn);
+    s += "\n}";
+    return s;
+}
+
+string BTree::pageToString(PageNum pn)
+{
+    _fileHandle->readPage(pn, buffer);
+    // find if is leaf or not
+    int isLeafBuffer = 0;
+    memcpy(&isLeafBuffer, buffer, sizeof(int));
+    if (isLeafBuffer == 1)
+    {
+        LeafPage leaf(buffer, attrType);
+        return leaf.toString();
+    }
+    InternalPage ip(buffer, attrType);
+    string s = ip.toString() + ",\n";
+    s += "\"childern\": [\n";
+    for (unsigned i = 0; i < ip.entries.size(); i++)
+    {
+        s += pageToString(ip.entries[i]->ptrNum) + ",\n";
+    }
+    s += "]";
     return s;
 }
 
@@ -638,43 +811,158 @@ RC MetaPage::getRawData(char *data)
  ****************************************************/
 NodePage::NodePage(PageNum parentPn, AttrType attrType, unsigned size, int isLeaf)
     : parentPn(parentPn),
-      isRoot(parentPn == 0 ? 1 : 0),
       isLeaf(isLeaf),
       attrType(attrType),
-      size(size)
+      size(size),
+      pageNum(0)
 {
 }
 
 /****************************************************
  *                  InternalPage                    *
- ****************************************************/
+ ****************************************************
+ *
+ *  [isLeaf][parent PageNum][entries num][entries...]
+ * 
+ * Internal Entry:
+ *  [key value][Node(leaf/internal) pageNum]
+ * 
+ */
 InternalPage::InternalPage(AttrType attrType, PageNum parentPn)
-    : NodePage(parentPn, attrType, 0, 0)
+    : NodePage(parentPn, attrType, INTERNAL_PAGE_HEADER_SIZE, 0)
 {
 }
 InternalPage::InternalPage(char *rawData, AttrType attrType)
     : NodePage(parentPn, attrType, 0, 0)
 {
-    cerr << "should not make internal now.." << endl;
-    exit(-1);
+    if (attrType == TypeVarChar)
+    {
+        cerr << endl
+             << "TODO: can't read varchar from disk" << endl;
+        exit(-1);
+    }
+
+    char *start = rawData;
+    unsigned entriesNum = 0;
+    char keyBuffer[PAGE_SIZE];
+    PageNum pnBuffer = 0;
+
+    memcpy(&(this->isLeaf), rawData, sizeof(int));
+    rawData += sizeof(int);
+    memcpy(&(this->parentPn), rawData, sizeof(PageNum));
+    rawData += sizeof(PageNum);
+    memcpy(&entriesNum, rawData, sizeof(unsigned));
+    rawData += sizeof(unsigned);
+
+    for (unsigned i = 0; i < entriesNum; i++)
+    {
+        // dummy key still has a 4 size key
+        memcpy(keyBuffer, rawData, 4);
+        rawData += 4;
+        memcpy(&pnBuffer, rawData, sizeof(unsigned));
+        rawData += sizeof(unsigned);
+
+        entries.push_back(new InternalEntry(keyBuffer, 4, pnBuffer));
+    }
+    size = rawData - start;
+    // cerr << "finish reading a InternalPage: " << toString();
 }
 
 InternalPage::~InternalPage()
 {
     for (unsigned i = 0; i < entries.size(); i++)
     {
-        delete entries[i];
+       delete entries[i];
     }
+}
+
+void InternalPage::initFirstEntry(PageNum left, char *key, unsigned len, PageNum right)
+{
+    // actually first two entry, while the first entry is a dummy entry
+    entries.push_back(new InternalEntry(nullptr, 0, left));
+    size += 4 + sizeof(unsigned);
+
+    entries.push_back(new InternalEntry(key, len, right));
+    size += len + sizeof(unsigned);
+}
+
+void InternalPage::insertAfter(PageNum oldNode, char *midKey, unsigned len, PageNum newNode)
+{
+    vector<InternalEntry *>::iterator it = entries.begin();
+    for (; it != entries.end() && (*it)->ptrNum != oldNode; it++);
+    if (it == entries.end())
+    {
+        cerr << "insert after what? don't find the old node." << endl;
+        exit(-1);
+    }
+    entries.insert(it + 1, new InternalEntry(midKey, len, newNode));
+}
+
+PageNum InternalPage::lookup(char *key, unsigned len)
+{
+    LeafEntry e(key, len);
+    // 0th is dummy key, can't compare. so start from 1
+    for (unsigned i = 1; i < entries.size(); i++)
+    {
+        if (entries[i]->compareTo(&e, attrType) > 0)
+        {
+            return entries[i - 1]->ptrNum;
+        }
+    }
+    // reach the last one
+    return entries[entries.size() - 1]->ptrNum;
 }
 
 RC InternalPage::getRawData(char *data)
 {
-    return -1;
+    if (tooBig())
+    {
+        cerr << "can't get raw data, since to big" << endl;
+        return -1;
+    }
+    unsigned entryNum = entries.size();
+    memset(data, 0, PAGE_SIZE);
+
+    memcpy(data, &isLeaf, sizeof(int));
+    data += sizeof(int);
+    memcpy(data, &parentPn, sizeof(PageNum));
+    data += sizeof(PageNum);
+    memcpy(data, &entryNum, sizeof(unsigned));
+    data += sizeof(unsigned);
+
+    for (unsigned i = 0; i < entries.size(); i++)
+    {
+        // for dummy key, [0, ptr]
+        if (entries[i]->size == 0)
+        {
+            if (i != 0)
+            {
+                cerr << "dummy key should be the first one." << endl;
+                exit(-1);
+            }
+            memset(data, 0, 4);
+            data += 4;
+        }
+        else
+        {
+            memcpy(data, entries[i]->key, entries[i]->size);
+            data += entries[i]->size;
+        }
+        memcpy(data, &(entries[i]->ptrNum), sizeof(unsigned));
+        data += sizeof(unsigned);
+    }
+    return 0;
 }
 
 string InternalPage::toString()
 {
-    return "TODO";
+    string s = "\"keys\": [";
+    for (unsigned i = 0; i < entries.size(); i++)
+    {
+        s += entries[i]->toString(attrType) + ",";
+    }
+    s = s.substr(0, s.size() - 1) + "]";
+    return s;
 }
 
 /****************************************************
@@ -692,7 +980,7 @@ LeafPage::LeafPage(AttrType attrType, PageNum parentPn)
 {
 }
 LeafPage::LeafPage(char *rawData, AttrType attrType)
-    : NodePage(parentPn, attrType, 0, 1)
+    : NodePage(0, attrType, 0, 1)
 {
     // cerr << "should not read leaf page from disk now" << endl;
     // exit(-1);
@@ -746,16 +1034,6 @@ LeafPage::~LeafPage()
     }
 }
 
-RC LeafPage::lookupAndInsert(char *key, unsigned len, RID rid)
-{
-    return -1;
-}
-
-LeafEntry *LeafPage::lookup(char *key)
-{
-    return nullptr;
-}
-
 RC LeafPage::insert(char *key, unsigned len, RID rid)
 {
     LeafEntry *e = new LeafEntry(key, len, rid);
@@ -770,15 +1048,14 @@ RC LeafPage::insert(char *key, unsigned len, RID rid)
 
 RC LeafPage::lazyRemove(char *key)
 {
-    if (entries.size() == 0)
+    if (attrType == TypeVarChar)
     {
-        return -1;
+        cerr << "can't deal with var char now." << endl;
+        exit(-1);
     }
     LeafEntry e(key, 4);
     vector<LeafEntry *>::iterator it = entries.begin();
-    for (; it != entries.end() && e.compareTo(*it, attrType) != 0; it++)
-    {
-    }
+    for (; it != entries.end() && e.compareTo(*it, attrType) != 0; it++);
     // not found or is already deleted
     if (it == entries.end() || (*it)->isDeleted == 1)
     {
@@ -788,13 +1065,27 @@ RC LeafPage::lazyRemove(char *key)
     return 0;
 }
 
+void LeafPage::moveHalfTo(LeafPage &that)
+{
+    unsigned count = entries.size();
+    for (unsigned i = count / 2; i < count; i++)
+    {
+        that.entries.push_back(entries[i]);
+    }
+
+    // remove, use count to avoid entries.size change after pop_back()
+    for (unsigned i = count / 2; i < count; i++)
+    {
+        size -= (entries[i]->size + sizeof(RID) + sizeof(unsigned));
+        entries.pop_back();
+    }
+}
+
 void LeafPage::cloneRangeFrom(char *key, unsigned len, vector<LeafEntry *> &target)
 {
     LeafEntry e(key, len);
     vector<LeafEntry *>::iterator it = entries.begin();
-    for (; it != entries.end() && e.compareTo(*it, attrType) != 0; it++)
-    {
-    }
+    for (; it != entries.end() && e.compareTo(*it, attrType) != 0; it++);
     for (; it != entries.end(); it++)
     {
         target.push_back((*it)->clone());
@@ -815,7 +1106,7 @@ RC LeafPage::getRawData(char *data)
     if (tooBig())
     {
         cerr << "raw data > PAGE_SIZE" << endl;
-        return -1;
+        exit(-1);
     }
 
     unsigned entryNum = entries.size();
@@ -830,13 +1121,13 @@ RC LeafPage::getRawData(char *data)
     memcpy(data, &entryNum, sizeof(unsigned));
     data += sizeof(unsigned);
 
-    for (vector<LeafEntry *>::iterator it = entries.begin(); it != entries.end(); it++)
+    for (unsigned i = 0; i < entries.size(); i++)
     {
-        memcpy(data, (*it)->key, (*it)->size);
-        data += (*it)->size;
-        memcpy(data, &((*it)->rid), sizeof(RID));
+        memcpy(data, entries[i]->key, entries[i]->size);
+        data += entries[i]->size;
+        memcpy(data, &(entries[i]->rid), sizeof(RID));
         data += sizeof(RID);
-        memcpy(data, &((*it)->isDeleted), sizeof(int));
+        memcpy(data, &(entries[i]->isDeleted), sizeof(int));
         data += sizeof(int);
     }
     return 0;
@@ -863,8 +1154,16 @@ InternalEntry::InternalEntry(char *key, unsigned len, PageNum ptrNum)
     : size(len),
       ptrNum(ptrNum)
 {
-    this->key = new char[size];
-    memcpy(this->key, key, size);
+    if (len > 0)
+    {
+        this->key = new char[size];
+        memcpy(this->key, key, size);
+    }
+    else
+    {
+        // never forget this->
+        this->key = nullptr;
+    }
 }
 
 InternalEntry::~InternalEntry()
@@ -873,6 +1172,47 @@ InternalEntry::~InternalEntry()
     {
         delete[] key;
     }
+}
+
+int InternalEntry::compareTo(LeafEntry *that, AttrType attrType)
+{
+    // dummy key
+    if (size == 0)
+    {
+        return -1;
+    }
+    LeafEntry _this(key, size);
+    return _this.compareTo(that, attrType);
+}
+
+string InternalEntry::toString(AttrType attrType)
+{
+    if (size == 0)
+    {
+        string s = "[dummy: " + ptrNum;
+        s += "]";
+        return s;
+    }
+    int _int = 0;
+    float _f = 0.0;
+    switch (attrType)
+    {
+    case TypeInt:
+    {
+        memcpy(&_int, key, sizeof(int));
+        return to_string(_int);
+    }
+    case TypeReal:
+    {
+        memcpy(&_f, key, sizeof(float));
+        return to_string(_f);
+    }
+    case TypeVarChar:
+    {
+        return "[VarChar..]";
+    }
+    }
+    return "";
 }
 
 /****************************************************
@@ -889,7 +1229,7 @@ LeafEntry::LeafEntry(char *key, unsigned len, RID rid, int isDeleted)
 
 LeafEntry::~LeafEntry()
 {
-    if (key)
+    if (key && size > 0)
     {
         delete[] key;
     }
@@ -952,7 +1292,7 @@ string LeafEntry::toString(AttrType attrType)
     }
     case TypeVarChar:
     {
-        return "[varchar..]";
+        return "[VarChar..]";
     }
     }
     return "";

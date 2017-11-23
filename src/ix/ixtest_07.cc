@@ -67,6 +67,9 @@ int testCase_7(const string &indexFileName, const Attribute &attribute)
         rc = indexManager->destroyFile(indexFileName);
         return fail;
     }
+    
+    // print tree
+    indexManager->printBtree(ixfileHandle, attribute);
 
     // Close Scan
     rc = ix_ScanIterator.close();
