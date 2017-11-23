@@ -64,7 +64,7 @@ public:
           IX_ScanIterator &ix_ScanIterator);
 
   // Print the B+ tree in pre-order (in a JSON record format)
-  void printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const;
+  void printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute, bool withMeta = false) const;
 };
 
 /****************************************************
@@ -79,6 +79,7 @@ private:
   char *highKey;
   bool lowKeyInclusive;
   bool highKeyInclusive;
+  bool toGetFirst;
   // legal next should always > 0, since No.0 is Meta page
   PageNum next;
   vector<LeafEntry *> entries;
@@ -169,8 +170,8 @@ public:
   // PageNum findLessThanLeafPage();
   // PageNum findGreaterThanLeafPage();
 
-  string toString();
-  string pageToString(PageNum pn);
+  string toString(bool withMeta = false);
+  string pageToString(PageNum pn, bool withMeta = false);
   // RC toJSON();
 };
 
@@ -212,7 +213,7 @@ public:
 
   bool tooBig() { return size > PAGE_SIZE; };
   virtual RC getRawData(char *data) = 0;
-  virtual string toString() = 0;
+  virtual string toString(bool withMeta = false) = 0;
 };
 
 /****************************************************
@@ -244,7 +245,7 @@ public:
   // void moveHalfTo(InternalPage *that);
   PageNum lookup(char *key, unsigned len);
   RC getRawData(char *data) override;
-  string toString() override;
+  string toString(bool withMeta = false) override;
 };
 
 /****************************************************
@@ -278,14 +279,13 @@ public:
   // exact key, with no trimmed
   RC lazyRemove(char *key);
   void moveHalfTo(LeafPage &that);
-  // only clone from the key from EXACTLY IDENTICAL, else nothing will be pushed
-  void cloneRangeFrom(char *key, unsigned len, vector<LeafEntry *> &target);
+  void cloneRangeFrom(char *key, unsigned len, bool inclusive, vector<LeafEntry *> &target);
   void cloneRangeAll(vector<LeafEntry *> &target);
   // void cloneRangeTo(char *key, unsigned len, vector<LeafEntry *> &target);
   // void cloneRangeFromTo(char *key, unsigned len, vector<LeafEntry *> &target);
 
   RC getRawData(char *data) override;
-  string toString() override;
+  string toString(bool withMeta = false) override;
 };
 
 /****************************************************

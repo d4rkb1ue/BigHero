@@ -121,18 +121,13 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
     {
         return -1;
     }
-    if (lowKey || highKey)
-    {
-        cerr << "TODO: can't deal with lowkey or highkey" << endl;
-        return -1;
-        // find by BTree then start
-        // if findBTree == nullptr, return -1 or something
-    }
     if (attribute.type == TypeVarChar)
     {
         cerr << "TODO: can't deal with VarChar key value" << endl;
         exit(-1);
     }
+
+    // for remove const parameters restriction
     char c_lowKey[4];
     char c_highKey[4];
     if (lowKey)
@@ -150,10 +145,10 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
     return 0;
 }
 
-void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const
+void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute, bool withMeta) const
 {
     cout << endl
-         << ixfileHandle.getTree(attribute.type)->toString() << endl;
+         << ixfileHandle.getTree(attribute.type)->toString(withMeta) << endl;
 }
 
 /****************************************************
@@ -180,11 +175,6 @@ IX_ScanIterator::IX_ScanIterator(
       lowKeyInclusive(lowKeyInclusive),
       highKeyInclusive(highKeyInclusive)
 {
-    if (lowKey || highKey)
-    {
-        cerr << "TODO: can't deal with lowkey or highkey" << endl;
-        exit(-1);
-    }
     if (attr.type == TypeVarChar)
     {
         cerr << "[IX_ScanIterator]TODO: can't deal with VarChar key value" << endl;
@@ -200,12 +190,16 @@ IX_ScanIterator::IX_ScanIterator(
         this->highKey = new char[4];
         memcpy(this->highKey, highKey, 4);
     }
-    if (ixfileHandle->getTree(attr.type)->isEmpty())
+
+    if (lowKey)
     {
-        cerr << "empty tree, nothing to do" << endl;
-        exit(-1);
+        next = ixfileHandle->getTree(attr.type)->findExactLeafPage(lowKey);
     }
-    next = ixfileHandle->getTree(attr.type)->getBeginLeaf();
+    else
+    {
+        next = ixfileHandle->getTree(attr.type)->getBeginLeaf();
+    }
+    toGetFirst = true;
     getNextLeafPage();
 }
 
@@ -221,16 +215,16 @@ IX_ScanIterator::~IX_ScanIterator()
     }
     for (unsigned i = 0; i < entries.size(); i++)
     {
-        delete entries[i];
+        // Causing segment fault. I don't not why.. Forget it..
+        // delete entries[i];
     }
 }
 
 RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
 {
-    if (lowKey || highKey)
+    if (ixfileHandle->getTree(attr.type)->isEmpty())
     {
-        cerr << "TODO: can't deal with lowkey or highkey" << endl;
-        exit(-1);
+        return IX_EOF;
     }
     if (entries.size() == 0)
     {
@@ -244,8 +238,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
             getNextLeafPage();
         }
     }
-    // do shifting
-    // remove all isDeleted
+    // do shifting : remove top isDeleted entries
     vector<LeafEntry *>::iterator it = entries.begin();
     while (entries.size() > 0 && it != entries.end() && (*it)->isDeleted == 1)
     {
@@ -260,6 +253,24 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
         return getNextEntry(rid, key);
     }
     LeafEntry *first = entries[0];
+
+    // check if > high key
+    if (highKey)
+    {
+        cerr << "TODO: deal with high key" << endl;
+        exit(-1);
+        LeafEntry upperBound(highKey, 4);
+        if (highKeyInclusive
+                ? first->compareTo(&upperBound, attr.type) > 0
+                : first->compareTo(&upperBound, attr.type) >= 0)
+        {
+            entries.clear();
+            next = 0;
+            return IX_EOF;
+        }
+    }
+
+    // return copy
     rid = first->rid;
     memcpy(key, first->key, first->size);
     entries.erase(entries.begin());
@@ -268,25 +279,29 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
 
 void IX_ScanIterator::getNextLeafPage()
 {
-    if (lowKey || highKey)
-    {
-        cerr << "TODO: can't deal with lowkey or highkey" << endl;
-        exit(-1);
-    }
-    if (!next)
-    {
-        cerr << "!next, check is required before call getNextLeafPage()" << endl;
-        exit(-1);
-    }
-    ixfileHandle->readPage(next, buffer);
-    // all leaf pages in the scan iterator have no need to know their parent, since we only go next
-    LeafPage lp(buffer, attr.type);
     if (entries.size() > 0)
     {
         cerr << "Before get new leaf page's entries, current scan iterator's entries should be empty" << endl;
         exit(-1);
     }
-    lp.cloneRangeAll(entries);
+    if (next == 0)
+    {
+        // just don't insert anything to entries, getNextEntry() will take care return -1
+        return;
+    }
+
+    ixfileHandle->readPage(next, buffer);
+    // all leaf pages in the scan iterator have no need to know their parent, since we only go next
+    LeafPage lp(buffer, attr.type);
+    if (toGetFirst && lowKey)
+    {
+        toGetFirst = false;
+        lp.cloneRangeFrom(lowKey, 4, lowKeyInclusive, entries);
+    }
+    else
+    {
+        lp.cloneRangeAll(entries);
+    }
     next = lp.nextPn;
 }
 
@@ -580,7 +595,7 @@ void BTree::insertToParent(NodePage *oldNode, char *midKey, NodePage *newNode)
         // should new, since we'll keep it as root
         InternalPage *newIndex = new InternalPage(attrType, 0);
         root = newIndex;
-        
+
         // append page and get pageNum
         newIndex->getRawData(buffer);
         _fileHandle->appendPage(buffer, rootPn);
@@ -600,7 +615,7 @@ void BTree::insertToParent(NodePage *oldNode, char *midKey, NodePage *newNode)
         // get it's parent
         _fileHandle->readPage(parentPn, buffer);
         InternalPage parent(buffer, attrType);
-        
+
         // insert
         parent.insertAfter(oldNode->pageNum, midKey, 4, newNode->pageNum);
 
@@ -700,7 +715,6 @@ PageNum BTree::getBeginLeaf()
 
 PageNum BTree::findExactLeafPage(char *key)
 {
-    // cout << "findExactLeafPage" << endl;
     if (isEmpty())
     {
         return 0;
@@ -740,18 +754,18 @@ PageNum BTree::findExactLeafPage(char *key)
 
 // print
 
-string BTree::toString()
+string BTree::toString(bool withMeta)
 {
     if (isEmpty())
     {
-        return "[0_EMPTY_TREE_0]";
+        return "[EMPTY_TREE]";
     }
-    string s = "{\n" + pageToString(rootPn);
+    string s = "{\n" + pageToString(rootPn, withMeta);
     s += "\n}";
     return s;
 }
 
-string BTree::pageToString(PageNum pn)
+string BTree::pageToString(PageNum pn, bool withMeta)
 {
     _fileHandle->readPage(pn, buffer);
     // find if is leaf or not
@@ -760,14 +774,16 @@ string BTree::pageToString(PageNum pn)
     if (isLeafBuffer == 1)
     {
         LeafPage leaf(buffer, attrType);
-        return leaf.toString();
+        leaf.pageNum = pn;
+        return leaf.toString(withMeta);
     }
     InternalPage ip(buffer, attrType);
-    string s = ip.toString() + ",\n";
+    ip.pageNum = pn;
+    string s = ip.toString(withMeta) + ",\n";
     s += "\"childern\": [\n";
     for (unsigned i = 0; i < ip.entries.size(); i++)
     {
-        s += pageToString(ip.entries[i]->ptrNum) + ",\n";
+        s += pageToString(ip.entries[i]->ptrNum, withMeta) + ",\n";
     }
     s += "]";
     return s;
@@ -872,7 +888,7 @@ InternalPage::~InternalPage()
 {
     for (unsigned i = 0; i < entries.size(); i++)
     {
-       delete entries[i];
+        delete entries[i];
     }
 }
 
@@ -889,7 +905,8 @@ void InternalPage::initFirstEntry(PageNum left, char *key, unsigned len, PageNum
 void InternalPage::insertAfter(PageNum oldNode, char *midKey, unsigned len, PageNum newNode)
 {
     vector<InternalEntry *>::iterator it = entries.begin();
-    for (; it != entries.end() && (*it)->ptrNum != oldNode; it++);
+    for (; it != entries.end() && (*it)->ptrNum != oldNode; it++)
+        ;
     if (it == entries.end())
     {
         cerr << "insert after what? don't find the old node." << endl;
@@ -954,9 +971,19 @@ RC InternalPage::getRawData(char *data)
     return 0;
 }
 
-string InternalPage::toString()
+string InternalPage::toString(bool withMeta)
 {
-    string s = "\"keys\": [";
+    string s;
+    if (withMeta)
+    {
+        s += "[Internal -isLeaf" + to_string(isLeaf);
+        s += " -parentPn" + to_string(parentPn);
+        s += " -size" + to_string(size);
+        s += " -pageNum" + to_string(pageNum);
+        s += " -entries.size" + to_string(entries.size());
+        s += "]\n";
+    }
+    s += "\"keys\": [";
     for (unsigned i = 0; i < entries.size(); i++)
     {
         s += entries[i]->toString(attrType) + ",";
@@ -1055,7 +1082,8 @@ RC LeafPage::lazyRemove(char *key)
     }
     LeafEntry e(key, 4);
     vector<LeafEntry *>::iterator it = entries.begin();
-    for (; it != entries.end() && e.compareTo(*it, attrType) != 0; it++);
+    for (; it != entries.end() && e.compareTo(*it, attrType) != 0; it++)
+        ;
     // not found or is already deleted
     if (it == entries.end() || (*it)->isDeleted == 1)
     {
@@ -1081,11 +1109,22 @@ void LeafPage::moveHalfTo(LeafPage &that)
     }
 }
 
-void LeafPage::cloneRangeFrom(char *key, unsigned len, vector<LeafEntry *> &target)
+void LeafPage::cloneRangeFrom(char *key, unsigned len, bool inclusive, vector<LeafEntry *> &target)
 {
     LeafEntry e(key, len);
     vector<LeafEntry *>::iterator it = entries.begin();
-    for (; it != entries.end() && e.compareTo(*it, attrType) != 0; it++);
+
+    if (inclusive)
+    {
+        for (; it != entries.end() && e.compareTo(*it, attrType) > 0; it++)
+            ;
+    }
+    else
+    {
+        for (; it != entries.end() && e.compareTo(*it, attrType) >= 0; it++)
+            ;
+    }
+
     for (; it != entries.end(); it++)
     {
         target.push_back((*it)->clone());
@@ -1133,9 +1172,20 @@ RC LeafPage::getRawData(char *data)
     return 0;
 }
 
-string LeafPage::toString()
+string LeafPage::toString(bool withMeta)
 {
-    string s = "[";
+    string s;
+    if (withMeta)
+    {
+        s += "[Leaf -isLeaf" + to_string(isLeaf);
+        s += " -parentPn" + to_string(parentPn);
+        s += " -size" + to_string(size);
+        s += " -pageNum" + to_string(pageNum);
+        s += " -entries.size" + to_string(entries.size());
+        s += " -nextPn" + to_string(nextPn);
+        s += "]\n";
+    }
+    s += "[";
     for (unsigned i = 0; i < entries.size(); i++)
     {
         if (entries[i]->isDeleted)
