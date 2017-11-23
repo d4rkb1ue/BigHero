@@ -215,8 +215,9 @@ IX_ScanIterator::~IX_ScanIterator()
     }
     for (unsigned i = 0; i < entries.size(); i++)
     {
-        // Causing segment fault. I don't not why.. Forget it..
-        // delete entries[i];
+        // Debug: May cause segment fault.
+        // I don't not why.. Try annotate it
+        delete entries[i];
     }
 }
 
