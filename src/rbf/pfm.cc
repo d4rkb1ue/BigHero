@@ -183,7 +183,7 @@ FileHandle::FileHandle(FILE *f)
         dirCount = fileHeader.data.dirCount;
 
         // read directory page(s)
-        for (int i = 0, offset = FILEHEADER_SIZE; i < dirCount; i++)
+        for (unsigned i = 0, offset = FILEHEADER_SIZE; i < dirCount; i++)
         {
             dirPages.push_back(DirectroyPage());
             if (_rawReadByte(offset, PAGE_SIZE, buffer) != 0)
@@ -347,7 +347,7 @@ RC FileHandle::flushAll()
     _rawWriteByte(0, FILEHEADER_SIZE, buffer);
 
     // save Directory Pages
-    for (int i = 0, offset = 0; i < dirCount; i++)
+    for (unsigned i = 0, offset = 0; i < dirCount; i++)
     {
         dirPages[i].getRawData(buffer);
         _rawWritePage(offset, buffer);
