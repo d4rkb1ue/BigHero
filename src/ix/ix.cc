@@ -140,7 +140,7 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
     }
     ix_ScanIterator = IX_ScanIterator(
         &ixfileHandle, attribute,
-        lowKey ? c_lowKey : nullptr, highKey ? c_highKey : nullptr,
+        (lowKey ? c_lowKey : nullptr), (highKey ? c_highKey : nullptr),
         lowKeyInclusive, highKeyInclusive);
     return 0;
 }
@@ -201,23 +201,26 @@ IX_ScanIterator::IX_ScanIterator(
     }
     toGetFirst = true;
     getNextLeafPage();
+    // cerr << "in IX_ScanIterator(), page begin from " << next
+    //      << " , entries.size = " << entries.size()
+    //      << endl;
 }
 
 IX_ScanIterator::~IX_ScanIterator()
 {
+    // Debug: May cause segment fault.
+    // I don't not why.. Try annotate it
     if (lowKey)
     {
-        delete[] lowKey;
+        // delete[] lowKey;
     }
     if (highKey)
     {
-        delete[] highKey;
+        // delete[] highKey;
     }
     for (unsigned i = 0; i < entries.size(); i++)
     {
-        // Debug: May cause segment fault.
-        // I don't not why.. Try annotate it
-        delete entries[i];
+        // delete entries[i];
     }
 }
 
@@ -243,7 +246,6 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
     vector<LeafEntry *>::iterator it = entries.begin();
     while (entries.size() > 0 && it != entries.end() && (*it)->isDeleted == 1)
     {
-        cerr << "erasing entry: " << (*it)->toString(TypeInt) << endl;
         entries.erase(it);
         // be careful when delete in cycle!
         // it should not ++ since it's deleted, the new one will come to current position
@@ -258,19 +260,14 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
     // check if > high key
     if (highKey)
     {
-        cerr << "TODO: deal with high key" << endl;
-        exit(-1);
         LeafEntry upperBound(highKey, 4);
-        if (highKeyInclusive
-                ? first->compareTo(&upperBound, attr.type) > 0
-                : first->compareTo(&upperBound, attr.type) >= 0)
+        if ((highKeyInclusive && first->compareTo(&upperBound, attr.type) > 0) || (!highKeyInclusive && first->compareTo(&upperBound, attr.type) >= 0))
         {
             entries.clear();
             next = 0;
             return IX_EOF;
         }
     }
-
     // return copy
     rid = first->rid;
     memcpy(key, first->key, first->size);
@@ -427,8 +424,6 @@ BTree::BTree(IXFileHandle *fileHandle, AttrType attrType)
         rootPn = 0;
         return;
     }
-    // cerr << "first insert shouldn't read any page." << endl;
-    // exit(-1);
 
     // if file isn't empty, read meta page
     _fileHandle->readPage(0, buffer);
@@ -445,11 +440,6 @@ BTree::BTree(IXFileHandle *fileHandle, AttrType attrType)
     {
         root = new InternalPage(buffer, attrType);
     }
-
-    // cerr << endl
-    //      << "finish reloading tree: " <<  endl
-    //      << "rootRn - " << rootPn << endl
-    //      << toString() << endl;
 }
 
 BTree::~BTree()
@@ -879,7 +869,15 @@ InternalPage::InternalPage(char *rawData, AttrType attrType)
         memcpy(&pnBuffer, rawData, sizeof(unsigned));
         rawData += sizeof(unsigned);
 
-        entries.push_back(new InternalEntry(keyBuffer, 4, pnBuffer));
+        // insert dummy key firstly
+        if (i == 0)
+        {
+            entries.push_back(new InternalEntry(nullptr, 0, pnBuffer));
+        }
+        else
+        {
+            entries.push_back(new InternalEntry(keyBuffer, 4, pnBuffer));
+        }
     }
     size = rawData - start;
     // cerr << "finish reading a InternalPage: " << toString();
@@ -1240,7 +1238,7 @@ string InternalEntry::toString(AttrType attrType)
 {
     if (size == 0)
     {
-        string s = "[dummy: " + ptrNum;
+        string s = "[dummy: " + to_string(ptrNum);
         s += "]";
         return s;
     }
@@ -1302,11 +1300,12 @@ int LeafEntry::compareTo(LeafEntry *that, AttrType attrType)
         float f_this = 0, f_that = 0;
         memcpy(&f_this, key, sizeof(float));
         memcpy(&f_that, that->key, sizeof(float));
-        if (f_this - f_that < 0.000001)
+        // cerr << "in LeafEntry::compareTo, this = " << f_this << ", that = " << f_that << endl;
+        if (f_this - f_that < 0.001 && f_that - f_this < 0.001)
         {
             return 0;
         }
-        return f_this - f_that < 0 ? -1 : 1;
+        return ((f_this - f_that) < 0.0 ? -1 : 1);
     }
     case TypeVarChar:
     {
