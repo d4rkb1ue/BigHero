@@ -1064,7 +1064,7 @@ RC LeafPage::insert(char *key, unsigned len, RID rid)
 {
     LeafEntry *e = new LeafEntry(key, len, rid);
     vector<LeafEntry *>::iterator it2ptr = entries.begin();
-    for (; it2ptr != entries.end() && e->compareTo(*it2ptr, attrType) > 0; it2ptr++)
+    for (; it2ptr != entries.end() && e->compareTo(*it2ptr, attrType) >= 0; it2ptr++)
     {
     }
     entries.insert(it2ptr, e);
