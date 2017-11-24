@@ -895,10 +895,10 @@ void InternalPage::initFirstEntry(PageNum left, char *key, unsigned len, PageNum
 {
     // actually first two entry, while the first entry is a dummy entry
     entries.push_back(new InternalEntry(nullptr, 0, left));
-    size += 4 + sizeof(unsigned);
+    size += 4 + sizeof(PageNum);
 
     entries.push_back(new InternalEntry(key, len, right));
-    size += len + sizeof(unsigned);
+    size += len + sizeof(PageNum);
 }
 
 void InternalPage::insertAfter(PageNum oldNode, char *midKey, unsigned len, PageNum newNode)
@@ -911,6 +911,7 @@ void InternalPage::insertAfter(PageNum oldNode, char *midKey, unsigned len, Page
         cerr << "insert after what? don't find the old node." << endl;
         exit(-1);
     }
+    size += len + sizeof(PageNum);
     entries.insert(it + 1, new InternalEntry(midKey, len, newNode));
 }
 
