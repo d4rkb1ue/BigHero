@@ -547,9 +547,11 @@ RC BTree::insertToLeaf(char *key, RID rid)
         _fileHandle->appendPage(buffer, newPn);
         lp.nextPn = newPn;
         newLeaf.pageNum = newPn;
+        newLeaf.parentPn = lp.parentPn;
 
         // pop up
         insertToParent(&lp, newLeaf.entries[0]->key, &newLeaf);
+
         // since after pop up, the newLeaf's parent may change
         newLeaf.getRawData(buffer);
         _fileHandle->writePage(newPn, buffer);
@@ -562,7 +564,6 @@ RC BTree::insertToLeaf(char *key, RID rid)
     }
     lp.getRawData(buffer);
     _fileHandle->writePage(pn, buffer);
-    // cerr << "after insert (" << rid.pageNum << ", " << rid.slotNum << "), page size = " << lp.size << endl;
     return 0;
 }
 
@@ -601,11 +602,11 @@ void BTree::insertToParent(NodePage *oldNode, char *midKey, NodePage *newNode)
     else
     {
         PageNum parentPn = oldNode->parentPn;
-        newNode->parentPn = parentPn;
 
         // get it's parent
         _fileHandle->readPage(parentPn, buffer);
         InternalPage parent(buffer, attrType);
+        parent.pageNum = parentPn;
 
         // insert
         parent.insertAfter(oldNode->pageNum, midKey, 4, newNode->pageNum);
@@ -613,8 +614,38 @@ void BTree::insertToParent(NodePage *oldNode, char *midKey, NodePage *newNode)
         // may need resursive call
         if (parent.tooBig())
         {
-            cerr << "TODO: internal page over size" << endl;
-            exit(-1);
+            // set its parent in next resursive
+            InternalPage newIp(attrType, 0);
+            PageNum newIpPn = 0;
+
+            parent.moveHalfTo(newIp);
+
+            // persist to get pageNum
+            newIp.getRawData(buffer);
+            _fileHandle->appendPage(buffer, newIpPn);
+            newIp.pageNum = newIpPn;
+
+            // set new children's parent to newIp's pageNum, no need caring about dummy key, key doesn't matter
+            for (unsigned i = 0; i < newIp.entries.size(); i++)
+            {
+                PageNum n = newIp.entries[i]->ptrNum;
+                _fileHandle->readPage(n, buffer);
+                // since it can be leaf or internal, just override data[4-8]. both works
+                memcpy(buffer + sizeof(int), &newIpPn, sizeof(PageNum));
+                _fileHandle->writePage(n, buffer);
+                // actually, all children can only be leaf, since it can't move than 3 layers, for 1,000,000 records
+                // LeafPage p(buffer, attrType);
+                // p.parentPn = newIpPn;
+                // p.getRawData(buffer);
+            }
+
+            // set dummy & pop-up to resursive call
+            InternalEntry *midIndexKey = newIp.dummyAndPopFirstKey();
+            insertToParent(&parent, midIndexKey->key, &newIp);
+
+            // re-persist the new parentPn
+            newIp.getRawData(buffer);
+            _fileHandle->writePage(newIpPn, buffer);
         }
 
         // persist updating
@@ -915,6 +946,35 @@ void InternalPage::insertAfter(PageNum oldNode, char *midKey, unsigned len, Page
     entries.insert(it + 1, new InternalEntry(midKey, len, newNode));
 }
 
+void InternalPage::moveHalfTo(InternalPage &that)
+{
+    unsigned count = entries.size();
+    for (unsigned i = count / 2; i < count; i++)
+    {
+        that.entries.push_back(entries[i]);
+        that.size += entries[i]->size + sizeof(PageNum);
+    }
+
+    for (unsigned i = count / 2; i < count; i++)
+    {
+        size -= (entries[i]->size + sizeof(PageNum));
+        entries.pop_back();
+    }
+}
+
+InternalEntry *InternalPage::dummyAndPopFirstKey()
+{
+    if (entries.size() < 2)
+    {
+        cerr << "dummyAndPopFirstKey should apply to half size internal page!" << endl;
+        exit(-1);
+    }
+    InternalEntry *clone = entries[0]->clone();
+    entries[0]->key = nullptr;
+    entries[0]->size = 0;
+    return clone;
+}
+
 PageNum InternalPage::lookup(char *key, unsigned len)
 {
     LeafEntry e(key, len);
@@ -1099,6 +1159,7 @@ void LeafPage::moveHalfTo(LeafPage &that)
     for (unsigned i = count / 2; i < count; i++)
     {
         that.entries.push_back(entries[i]);
+        that.size += (entries[i]->size + sizeof(RID) + sizeof(unsigned));
     }
 
     // remove, use count to avoid entries.size change after pop_back()
@@ -1233,6 +1294,12 @@ int InternalEntry::compareTo(LeafEntry *that, AttrType attrType)
     }
     LeafEntry _this(key, size);
     return _this.compareTo(that, attrType);
+}
+
+InternalEntry *InternalEntry::clone()
+{
+    InternalEntry *c = new InternalEntry(key, size, ptrNum);
+    return c;
 }
 
 string InternalEntry::toString(AttrType attrType)
