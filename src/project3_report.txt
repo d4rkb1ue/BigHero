@@ -1,37 +1,47 @@
 1. Basic information
-Team number (e.g., 01) : 
-#1 Student ID : 
-#1 Student Name : 
+Team number (e.g., 01) : 30
+#1 Student ID : 18201573
+#1 Student Name :  SHENG SU
 #2 Student ID : 
 #2 Student Name : 
-OS (bit) :
-gcc version :
+OS (bit) : Ubuntu 14.04 32bit
+gcc version : gcc version 5.4.1 20160904 (Ubuntu 5.4.1-2ubuntu1~14.04)
 
 
 2. Meta-data page in an index file
 - Show your meta-data page of an index design if you have any. 
 
+ * [PageNum rootPn][int rootIsLeaf]
 
 3. Index Entry Format
 - Show your index entry design (structure). 
 
+ * [key value][Node(leaf/internal) pageNum]
 
 4. Page Format
 - Show your internal-page (non-leaf node) design.
 
+ * [isLeaf][parent PageNum][entries num][entries...]
+
 - Show your leaf-page (leaf node) design.
 
+ * [isLeaf][parent PageNum][next leaf pageNum][entries num][entries...]
+ * Leaf Entry:
+ *  [key value][RID.pageNum][RID.slotNum][isDeleted]
 
 5. Implementation Detail
 - Have you added your own source file (.cc or .h)?
+  No.
 
 - Have you implemented non-lazy deletion? Choose Yes or No: 
+  No.
 
 - Have you implemented duplicated key handling that can span multiple pages? Choose Yes or No: 
   If yes, please explain briefly how you have implemented this feature.
+  No.
 
 - Other implementation details:
-
+  Not finish yet. Don't support VarChar.
 
 6. Other (optional)
 - Freely use this section to tell us about things that are related to the project 3, but not related to the other sections (optional)
