@@ -186,7 +186,7 @@ FileHandle::FileHandle(FILE *f)
         for (unsigned i = 0, offset = FILEHEADER_SIZE; i < dirCount; i++)
         {
             dirPages.push_back(DirectroyPage());
-            if (_rawReadByte(offset, PAGE_SIZE, buffer) != 0)
+            if (_rawReadByte(offset, offset + PAGE_SIZE, buffer) != 0)
             {
                 cerr << "_rawReadByte failed." << endl;
                 exit(-1);
@@ -254,8 +254,9 @@ RC FileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePage
 
 RC FileHandle::_rawReadByte(unsigned start, unsigned end, void *data)
 {
-    if (start >= end || end >= getFileSize())
+    if (start >= end || end > getFileSize())
     {
+        cerr << "start=" << start << " end=" << end << " getFileSize()=" << getFileSize() << endl;
         return -1;
     }
     fseek(filePtr, start, SEEK_SET);

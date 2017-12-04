@@ -98,6 +98,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     if (attribute.type == TypeVarChar)
     {
         cerr << "can't deal with var char now" << endl;
+        exit(-1);
     }
     char c_key[4];
     memcpy(c_key, key, 4);
@@ -147,7 +148,7 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
 
 void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute, bool withMeta) const
 {
-    cout << endl
+    cerr << endl
          << ixfileHandle.getTree(attribute.type)->toString(withMeta) << endl;
 }
 
@@ -173,7 +174,8 @@ IX_ScanIterator::IX_ScanIterator(
       lowKey(nullptr),
       highKey(nullptr),
       lowKeyInclusive(lowKeyInclusive),
-      highKeyInclusive(highKeyInclusive)
+      highKeyInclusive(highKeyInclusive),
+      next(0)
 {
     if (attr.type == TypeVarChar)
     {
@@ -284,7 +286,7 @@ void IX_ScanIterator::getNextLeafPage()
     }
     if (next == 0)
     {
-        // just don't insert anything to entries, getNextEntry() will take care return -1
+        // just don't insert anything to entries, getNextEntry() will take care to return -1
         return;
     }
 
@@ -556,11 +558,6 @@ RC BTree::insertToLeaf(char *key, RID rid)
         newLeaf.getRawData(buffer);
         _fileHandle->writePage(newPn, buffer);
 
-        // cerr << endl
-        //      << "after split: " << endl
-        //      << "rootPn - " << rootPn << endl
-        //      << "old pn - " << pn << endl
-        //      << "new pn - " << newPn << endl;
     }
     lp.getRawData(buffer);
     _fileHandle->writePage(pn, buffer);
@@ -619,12 +616,13 @@ void BTree::insertToParent(NodePage *oldNode, char *midKey, NodePage *newNode)
             PageNum newIpPn = 0;
 
             parent.moveHalfTo(newIp);
+            newIp.parentPn = parent.parentPn;
 
             // persist to get pageNum
             newIp.getRawData(buffer);
             _fileHandle->appendPage(buffer, newIpPn);
             newIp.pageNum = newIpPn;
-
+            
             // set new children's parent to newIp's pageNum, no need caring about dummy key, key doesn't matter
             for (unsigned i = 0; i < newIp.entries.size(); i++)
             {
@@ -633,10 +631,16 @@ void BTree::insertToParent(NodePage *oldNode, char *midKey, NodePage *newNode)
                 // since it can be leaf or internal, just override data[4-8]. both works
                 memcpy(buffer + sizeof(int), &newIpPn, sizeof(PageNum));
                 _fileHandle->writePage(n, buffer);
-                // actually, all children can only be leaf, since it can't move than 3 layers, for 1,000,000 records
-                // LeafPage p(buffer, attrType);
-                // p.parentPn = newIpPn;
-                // p.getRawData(buffer);
+                
+                // should also reset the page that are already in memory
+                if (oldNode->pageNum == n)
+                {
+                    oldNode->parentPn = newIpPn;
+                }
+                if (newNode->pageNum == n)
+                {
+                    newNode->parentPn = newIpPn;
+                }
             }
 
             // set dummy & pop-up to resursive call
@@ -940,6 +944,9 @@ void InternalPage::insertAfter(PageNum oldNode, char *midKey, unsigned len, Page
     if (it == entries.end())
     {
         cerr << "insert after what? don't find the old node." << endl;
+        int tmp = 0;
+        memcpy(&tmp, midKey, 4);
+        cerr << "-myself=" << pageNum <<  " -oldNode=" << oldNode << " -newNode=" << newNode << " -key=" << tmp << endl;
         exit(-1);
     }
     size += len + sizeof(PageNum);
