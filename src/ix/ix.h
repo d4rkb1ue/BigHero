@@ -159,7 +159,7 @@ class BTree
     // so must pass by ptr, not pageNum
     void insertToParent(NodePage *oldNode, char *key, NodePage *newNode);
 
-    RC lazyRemove(char *key);
+    RC lazyRemove(char *key, RID rid);
 
     void updateRoot();
 
@@ -283,7 +283,7 @@ class LeafPage : public NodePage
     // after insert, the size may over PAGE_SIZE, the caller should take care of it
     RC insert(char *key, unsigned len, RID rid);
     // exact key, with no trimmed
-    RC lazyRemove(char *key);
+    RC lazyRemove(char *key, RID rid);
     void moveHalfTo(LeafPage &that);
     void cloneRangeFrom(char *key, unsigned len, bool inclusive, vector<LeafEntry *> &target);
     void cloneRangeAll(vector<LeafEntry *> &target);

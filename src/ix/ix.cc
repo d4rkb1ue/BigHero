@@ -102,7 +102,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     }
     char c_key[4];
     memcpy(c_key, key, 4);
-    if (ixfileHandle.getTree(attribute.type)->lazyRemove(c_key) != 0)
+    if (ixfileHandle.getTree(attribute.type)->lazyRemove(c_key, rid) != 0)
     {
         return -1;
     }
@@ -661,7 +661,7 @@ void BTree::insertToParent(NodePage *oldNode, char *midKey, NodePage *newNode)
 
 // remove
 
-RC BTree::lazyRemove(char *key)
+RC BTree::lazyRemove(char *key, RID rid)
 {
     PageNum pn = findExactLeafPage(key);
     if (pn == 0)
@@ -670,7 +670,7 @@ RC BTree::lazyRemove(char *key)
     }
     _fileHandle->readPage(pn, buffer);
     LeafPage lp(buffer, attrType);
-    if (lp.lazyRemove(key) != 0)
+    if (lp.lazyRemove(key, rid) != 0)
     {
         // not found
         return -1;
@@ -1140,7 +1140,7 @@ RC LeafPage::insert(char *key, unsigned len, RID rid)
     return 0;
 }
 
-RC LeafPage::lazyRemove(char *key)
+RC LeafPage::lazyRemove(char *key, RID rid)
 {
     if (attrType == TypeVarChar)
     {
@@ -1149,10 +1149,19 @@ RC LeafPage::lazyRemove(char *key)
     }
     LeafEntry e(key, 4);
     vector<LeafEntry *>::iterator it = entries.begin();
-    for (; it != entries.end() && e.compareTo(*it, attrType) != 0; it++)
+    
+    // test either not equal or is already deleted
+    for (;
+         it != entries.end() &&
+         (e.compareTo(*it, attrType) != 0 ||
+          (*it)->isDeleted == 1 ||
+          rid.pageNum != (*it)->rid.pageNum ||
+          rid.slotNum != (*it)->rid.slotNum );
+         it++)
         ;
-    // not found or is already deleted
-    if (it == entries.end() || (*it)->isDeleted == 1)
+
+    // not found
+    if (it == entries.end())
     {
         return -1;
     }
