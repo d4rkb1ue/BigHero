@@ -57,9 +57,9 @@ int RBFTest_7(PagedFileManager *pfm)
         return -1;
     }
 
-    // Append 10000 pages
+    // Append 100 pages
     void *data = malloc(PAGE_SIZE);
-    for(unsigned j = 0; j < 10000; j++)
+    for(unsigned j = 0; j < 100; j++)
     {
         for(unsigned i = 0; i < PAGE_SIZE; i++)
         {
@@ -68,7 +68,7 @@ int RBFTest_7(PagedFileManager *pfm)
         rc = fileHandle.appendPage(data);
         assert(rc == success && "Appending a page should not fail.");
     }
-    cout << "10000 Pages have been successfully appended!" << endl;
+    cout << "100 Pages have been successfully appended!" << endl;
 
     // collect after counters
     rc = fileHandle.collectCounterValues(readPageCount1, writePageCount1, appendPageCount1);
@@ -83,7 +83,7 @@ int RBFTest_7(PagedFileManager *pfm)
    
     // Get the number of pages
     unsigned count = fileHandle.getNumberOfPages();
-    assert(count == (unsigned)10000 && "The count should be 10000 at this moment.");
+    assert(count == (unsigned)100 && "The count should be 100 at this moment.");
 
     // Read the 87th page and check integrity
     void *buffer = malloc(PAGE_SIZE);
@@ -112,29 +112,6 @@ int RBFTest_7(PagedFileManager *pfm)
     
     rc = memcmp(buffer, data, PAGE_SIZE);
     assert(rc == success && "Checking the integrity of a page should not fail.");
-
-    fileHandle.updateDataSize(9999, 1);
-    if (fileHandle.updateDataSize(10000, 1) == 0)
-    {
-        cerr << endl << "update page 10000 should fail. But it's doesn't matter.." << endl; 
-    }
-    /**
-     * custom test unit
-     */
-    cout << "page size = ";
-    unsigned _tmpSize = 0;
-    for (unsigned i = 0; i < 10; i++)
-    {
-        fileHandle.getPageSize(i, _tmpSize);
-        cout << _tmpSize << ". ";
-    }
-    for (unsigned i = 10000 - 10; i < 10000; i++)
-    {
-        fileHandle.getPageSize(i, _tmpSize);
-        cout << _tmpSize << ". ";
-    }
-    cout << endl;
-    
 
     // Close the file "test7"
     rc = pfm->closeFile(fileHandle);
