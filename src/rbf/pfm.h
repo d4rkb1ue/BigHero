@@ -53,7 +53,12 @@ class PagedFileManager
 
 /****************************************************
  *                  DirectroyPage                   *
- ****************************************************/
+ ****************************************************
+
+ * Actually, directory page has been abandoned.
+ * All metadata of data size in this header file can only be PAGE_SIZE, aka full for always
+ * just manage your page size inside 
+ */
 class DirectroyPage
 {
     unsigned dataSize[DIR_PAGE_LEN];
