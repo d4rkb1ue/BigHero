@@ -55,6 +55,7 @@ class Record
     static unsigned getRecordSize(const vector<Attribute> &recordDescriptor, const void *rawData);
     // return null indicator original size in record
     static unsigned parseNullIndicator(bool nullIndicators[], const vector<Attribute> &recordDescriptor, const void *rawData);
+    const static string RECORD_HEAD;
     const static unsigned REC_HEADER_SIZE;
     // 0: not a ptr
     // 1: is a ptr
@@ -68,6 +69,8 @@ class Record
     Record(vector<Attribute> recordDescriptor, char *rawData);
     ~Record();
 
+    // if deleted, size will be REC_HEADER_SIZE (data = NULL, ptrFlag = 2, rid = rid)
+    // if pointered(moved), size will be REC_HEADER_SIZE (data = NULL, ptrFlg = 1, rid = new rid)
     unsigned sizeWithoutHeader(const vector<Attribute> &recordDescriptor);
     unsigned sizeWithHeader(const vector<Attribute> &recordDescriptor);
     
@@ -75,12 +78,11 @@ class Record
 };
 
 // DataPage: [Size][RecordNum][Records Data]...
-// Record: [ptrFlag][RID][Raw Data]
+// Record: ["Rec:"][ptrFlag][RID][Raw Data]
 class DataPage
 {
   public:
     const static unsigned DATA_PAGE_HEADER_SIZE;
-
     vector<Record *> records;
     vector<Attribute> recordDescriptor;
 
@@ -91,6 +93,9 @@ class DataPage
     DataPage(vector<Attribute> recordDescriptor, char *data);
     ~DataPage();
 
+    unsigned getAvailableSize();
+    void appendRecord(Record *record);
+    void insertRecord(Record *record);
     void getRawData(char *data);
 };
 

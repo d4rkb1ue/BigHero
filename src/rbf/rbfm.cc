@@ -1,6 +1,8 @@
 #include "rbfm.h"
 
-const unsigned Record::REC_HEADER_SIZE = sizeof(int) + sizeof(RID);
+const string Record::RECORD_HEAD = "Rec:";
+const unsigned Record::REC_HEADER_SIZE = sizeof(int) + sizeof(RID) + 4;
+
 unsigned Record::getRecordSize(const vector<Attribute> &recordDescriptor, const void *rawData)
 {
     unsigned offset = 0;
@@ -162,6 +164,8 @@ DataPage::DataPage(vector<Attribute> recordDescriptor, char *data)
 
     for (unsigned i = 0; i < recordNum; i++)
     {
+        // jump "Rec:"
+        data += 4;
         memcpy(&ptrFlag, data, sizeof(int));
         data += sizeof(int);
         if (ptrFlag != 0)
@@ -174,6 +178,9 @@ DataPage::DataPage(vector<Attribute> recordDescriptor, char *data)
         data += sizeof(RID);
         
         Record *rec = new Record(recordDescriptor, data);
+        rec->ptrFlag = ptrFlag;
+        rec->rid = rid;
+
         data += rec->sizeWithoutHeader(recordDescriptor);
         records.push_back(rec);
     }
@@ -190,6 +197,69 @@ DataPage::~DataPage()
     for (unsigned i = 0; i < records.size(); i++)
     {
         delete records[i];
+    }
+}
+
+unsigned DataPage::getAvailableSize()
+{
+    unsigned available = size;
+    for (unsigned i = 0; i < records.size(); i++)
+    {
+        if (records[i]->ptrFlag == 2)
+        {
+            size -= records[i]->sizeWithHeader(recordDescriptor);
+        }
+    }
+    return available;
+}
+
+void DataPage::appendRecord(Record *record)
+{
+    record->ptrFlag = 0;
+    record->rid.slotNum = records.size();
+    records.push_back(record);
+    size += record->sizeWithHeader(recordDescriptor);
+    if (size > PAGE_SIZE)
+    {
+        cerr << "append Record excessed PAGE_SIZE" << endl;
+        exit(-1);
+    }
+}
+
+void DataPage::insertRecord(Record *record)
+{
+    record->ptrFlag = 0;
+    unsigned slotNum = records.size();
+
+    // find a deleted record and reuse its RID
+    for (unsigned i = 0; i < records.size(); i++)
+    {
+        if (records[i]->ptrFlag == 2)
+        {
+            slotNum = i;
+            break;
+        }
+    }
+    if (slotNum == records.size())
+    {
+        return appendRecord(record);
+    }
+    
+    // reuse its RID
+    record->rid.slotNum = slotNum;
+
+    // updata size before free it
+    size += record->sizeWithHeader(recordDescriptor) -
+            records[slotNum]->sizeWithHeader(recordDescriptor);
+
+    // free the deleted item
+    delete records[slotNum];
+    records[slotNum] = record;
+
+    if (size > PAGE_SIZE)
+    {
+        cerr << "insert Record excessed PAGE_SIZE" << endl;
+        exit(-1);
     }
 }
 
@@ -216,7 +286,9 @@ void DataPage::getRawData(char *data)
             exit(-1);
         }
         rec = records[i];
-
+        // add "Rec:"
+        memcpy(data, Record::RECORD_HEAD.c_str(), 4);
+        data += 4;
         memcpy(data, &(rec->ptrFlag), sizeof(int));
         data += sizeof(int);
         memcpy(data, &(rec->rid), sizeof(RID));
@@ -297,23 +369,69 @@ RC RecordBasedFileManager::addPageAndInsert(FileHandle &fileHandle, vector<Attri
     unsigned pageNum = fileHandle.getNumberOfPages() - 1;
 
     Record *record = new Record(recordDescriptor, data);
-    record->ptrFlag = 0;
-    record->rid = {pageNum, 0};
-    rid = record->rid;
+    record->rid.pageNum = pageNum;
+    
+    page.appendRecord(record);
 
-    page.records.push_back(record);
-    page.size += record->sizeWithHeader(recordDescriptor);
+    rid = record->rid;
 
     page.getRawData(buffer);
     fileHandle.writePage(pageNum, buffer);
-    
     return 0;
 }
 
 RC RecordBasedFileManager::findPageAndInsert(FileHandle &fileHandle, vector<Attribute> &recordDescriptor, char *data, RID &rid)
 {
-    cerr << "can't deal with findPageAndInsert" << endl;
-    exit(-1);
+    Record *record = new Record(recordDescriptor, data);
+    unsigned recordSize = record->sizeWithHeader(recordDescriptor);
+
+    // try last page firstly
+    unsigned pageNum = fileHandle.getNumberOfPages() - 1;
+    fileHandle.readPage(pageNum, buffer);
+    DataPage *lst = new DataPage(recordDescriptor, buffer);
+    DataPage *page = lst;
+
+    // lst can't fit
+    if (lst->getAvailableSize() + recordSize > PAGE_SIZE)
+    {
+        // lst == first? only one page, just do append
+        if (pageNum == 0)
+        {
+            delete lst;
+            return addPageAndInsert(fileHandle, recordDescriptor, data, rid);
+        }
+
+        // have other pages
+        pageNum = 0;
+        for (; pageNum < fileHandle.getNumberOfPages() - 1; pageNum++)
+        {
+            fileHandle.readPage(pageNum, buffer);
+            delete page;
+            page = new DataPage(recordDescriptor, buffer);
+            if (page->getAvailableSize() + recordSize <= PAGE_SIZE)
+            {
+                break;
+            }
+        }
+        
+        // still not found
+        if (pageNum == fileHandle.getNumberOfPages() - 1)
+        {
+            delete page;
+            return addPageAndInsert(fileHandle, recordDescriptor, data, rid);
+        }
+
+        // found, do other thing below
+    }
+    
+    record->rid.pageNum = pageNum;
+    page->insertRecord(record);
+
+    rid = record->rid;
+    page->getRawData(buffer);
+    fileHandle.writePage(pageNum, buffer);
+    
+    delete page;
     return 0;
 }
 

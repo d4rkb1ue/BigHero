@@ -1,1 +1,1 @@
-make && ./rbftest_p0 && ./rbftest_p1 && ./rbftest_p1b && ./rbftest_p1c && ./rbftest_p2 && ./rbftest_p3 && ./rbftest_p4 && ./rbftest_p5
+make && ./rbftest_p0 && ./rbftest_p1 && ./rbftest_p1b && ./rbftest_p1c && ./rbftest_p2 && ./rbftest_p2b && ./rbftest_p3 && ./rbftest_p4 && ./rbftest_p5

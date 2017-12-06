@@ -59,7 +59,7 @@ int RBFTest_private_3(RecordBasedFileManager *rbfm) {
     void *record2 = malloc(1000);
     void *returnedData = malloc(1000);
     void *returnedData2 = malloc(1000);
-    int numRecords = 50000;
+    int numRecords = 5000;
 
     vector<Attribute> recordDescriptorForTwitterUser,
             recordDescriptorForTweetMessage;
