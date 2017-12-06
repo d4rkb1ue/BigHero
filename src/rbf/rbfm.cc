@@ -5,12 +5,17 @@ const unsigned Record::REC_HEADER_SIZE = sizeof(int) + sizeof(RID) + 4;
 
 unsigned Record::getRecordSize(const vector<Attribute> &recordDescriptor, const void *rawData)
 {
+    if (rawData == nullptr)
+    {
+        return 0;
+    }
     unsigned offset = 0;
     unsigned attributeNum = recordDescriptor.size();
     const char *data = static_cast<const char *>(rawData);
 
     // parse record null indicator
     bool nullIndicators[attributeNum];
+
     // nullIndicators size as offset
     offset += parseNullIndicator(nullIndicators, recordDescriptor, rawData);
 
@@ -44,6 +49,11 @@ unsigned Record::getRecordSize(const vector<Attribute> &recordDescriptor, const 
 
 unsigned Record::parseNullIndicator(bool nullIndicators[], const vector<Attribute> &recordDescriptor, const void *rawData)
 {
+    if (!rawData)
+    {
+        cerr << "empty rawData" << endl;
+        exit(-1);
+    }
     const char *data = static_cast<const char *>(rawData);
     unsigned attributeNum = recordDescriptor.size();
     char niChar;
@@ -58,7 +68,17 @@ unsigned Record::parseNullIndicator(bool nullIndicators[], const vector<Attribut
 }
 
 Record::Record(vector<Attribute> recordDescriptor, char *rawData)
+    : ptrFlag(-1),
+      data(nullptr)
 {
+    // empty record
+    if (rawData == nullptr)
+    {
+        this->ptrFlag = 2;
+        this->data = nullptr;
+        return;
+    }
+
     unsigned size = getRecordSize(recordDescriptor, rawData);
     data = new char[size];
     memcpy(data, rawData, size);
@@ -74,22 +94,35 @@ Record::~Record()
 
 unsigned Record::sizeWithoutHeader(const vector<Attribute> &recordDescriptor)
 {
+    if (ptrFlag == 2)
+    {
+        return 0;
+    }
     return getRecordSize(recordDescriptor, data);
 }
 
 unsigned Record::sizeWithHeader(const vector<Attribute> &recordDescriptor)
 {
+    if (ptrFlag == 2)
+    {
+        return REC_HEADER_SIZE;
+    }
     return sizeWithoutHeader(recordDescriptor) + REC_HEADER_SIZE;
 }
 
 string Record::toString(const vector<Attribute> &recordDescriptor)
 {
+    if (!data)
+    {
+        return "[ptrFlag=" + to_string(ptrFlag) + "]";
+    }
+    
     string s;
     unsigned offset = 0;
     unsigned attributeNum = recordDescriptor.size();
     bool nullIndicators[attributeNum];
     offset += parseNullIndicator(nullIndicators, recordDescriptor, data);
-    
+
     // parse attributes
     int _int;
     float _float;
@@ -168,19 +201,27 @@ DataPage::DataPage(vector<Attribute> recordDescriptor, char *data)
         data += 4;
         memcpy(&ptrFlag, data, sizeof(int));
         data += sizeof(int);
-        if (ptrFlag != 0)
+        if (ptrFlag == 1)
         {
-            cerr << "can't deal with ptrFlag != 0" << endl;
+            cerr << "can't deal with ptrFlag == 1" << endl;
             exit(-1);
         }
         
         memcpy(&rid, data, sizeof(RID));
         data += sizeof(RID);
-        
-        Record *rec = new Record(recordDescriptor, data);
+        Record *rec = nullptr;
+
+        if (ptrFlag == 2)
+        {
+            rec = new Record(recordDescriptor, nullptr);
+        }
+        else
+        {
+            rec = new Record(recordDescriptor, data);
+        }
+
         rec->ptrFlag = ptrFlag;
         rec->rid = rid;
-
         data += rec->sizeWithoutHeader(recordDescriptor);
         records.push_back(rec);
     }
@@ -207,7 +248,7 @@ unsigned DataPage::getAvailableSize()
     {
         if (records[i]->ptrFlag == 2)
         {
-            size -= records[i]->sizeWithHeader(recordDescriptor);
+            available -= records[i]->sizeWithHeader(recordDescriptor);
         }
     }
     return available;
@@ -244,7 +285,7 @@ void DataPage::insertRecord(Record *record)
     {
         return appendRecord(record);
     }
-    
+
     // reuse its RID
     record->rid.slotNum = slotNum;
 
@@ -263,6 +304,23 @@ void DataPage::insertRecord(Record *record)
     }
 }
 
+void DataPage::deleteRecord(unsigned slotNum)
+{
+    Record *rec = records[slotNum];
+    if (rec->ptrFlag != 0)
+    {
+        cerr << "DataPage::deleteRecord can't deal with rec->ptrFlag != 0." << endl;
+        exit(-1);
+    }
+
+    // still keep the whole header
+    size -= rec->sizeWithoutHeader(recordDescriptor);
+    cerr << "size-=" << rec->sizeWithoutHeader(recordDescriptor) << "=" << size << endl;
+    rec->ptrFlag = 2;
+    delete [] rec->data;
+    rec->data = nullptr;
+}
+
 void DataPage::getRawData(char *data)
 {
     char *_data = data;
@@ -274,7 +332,7 @@ void DataPage::getRawData(char *data)
     data += sizeof(unsigned);
     memcpy(data, &recordNum, sizeof(unsigned));
     data += sizeof(unsigned);
-    
+
     // generate records raw data
     Record *rec;
     unsigned recSize;
@@ -295,6 +353,10 @@ void DataPage::getRawData(char *data)
         data += sizeof(RID);
 
         recSize = rec->sizeWithoutHeader(recordDescriptor);
+        if (recSize == 0)
+        {
+            continue;
+        }
         memcpy(data, rec->data, recSize);
         data += recSize;
     }
@@ -370,7 +432,7 @@ RC RecordBasedFileManager::addPageAndInsert(FileHandle &fileHandle, vector<Attri
 
     Record *record = new Record(recordDescriptor, data);
     record->rid.pageNum = pageNum;
-    
+
     page.appendRecord(record);
 
     rid = record->rid;
@@ -413,7 +475,7 @@ RC RecordBasedFileManager::findPageAndInsert(FileHandle &fileHandle, vector<Attr
                 break;
             }
         }
-        
+
         // still not found
         if (pageNum == fileHandle.getNumberOfPages() - 1)
         {
@@ -423,14 +485,14 @@ RC RecordBasedFileManager::findPageAndInsert(FileHandle &fileHandle, vector<Attr
 
         // found, do other thing below
     }
-    
+
     record->rid.pageNum = pageNum;
     page->insertRecord(record);
 
     rid = record->rid;
     page->getRawData(buffer);
     fileHandle.writePage(pageNum, buffer);
-    
+
     delete page;
     return 0;
 }
@@ -442,7 +504,7 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
         cerr << "read page failed" << endl;
         return -1;
     }
-    
+
     DataPage page(recordDescriptor, buffer);
     if (rid.slotNum >= page.records.size())
     {
@@ -456,7 +518,11 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
         cerr << "can't deal with record ptr now" << endl;
         exit(-1);
     }
-
+    if (rec->ptrFlag == 2)
+    {
+        // already deleted
+        return -1;
+    }
     unsigned dataSize = rec->sizeWithoutHeader(recordDescriptor);
     memcpy(data, rec->data, dataSize);
     return 0;
@@ -477,7 +543,35 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
 
 RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid)
 {
-    return -1;
+    if (fileHandle.readPage(rid.pageNum, buffer) != 0)
+    {
+        cerr << "read page failed" << endl;
+        return -1;
+    }
+
+    DataPage page(recordDescriptor, buffer);
+    if (rid.slotNum >= page.records.size())
+    {
+        cerr << "page.recordNum > rid.slotNum" << endl;
+        return -1;
+    }
+
+    Record *rec = page.records[rid.slotNum];
+    if (rec->ptrFlag == 1)
+    {
+        cerr << "can't deal with record ptr now" << endl;
+        exit(-1);
+    }
+    if (rec->ptrFlag == 2)
+    {
+        // already deleted
+        return -1;
+    }
+    
+    page.deleteRecord(rid.slotNum);
+    page.getRawData(buffer);
+    fileHandle.writePage(rid.pageNum, buffer);
+    return 0;
 }
 
 RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, const RID &rid)

@@ -57,9 +57,11 @@ class Record
     static unsigned parseNullIndicator(bool nullIndicators[], const vector<Attribute> &recordDescriptor, const void *rawData);
     const static string RECORD_HEAD;
     const static unsigned REC_HEADER_SIZE;
+
     // 0: not a ptr
     // 1: is a ptr
     // 2: is deleted
+    // -1: unset! which can never happen if correct
     int ptrFlag;
 
     // check whether rid is original rid in upper level
@@ -96,6 +98,7 @@ class DataPage
     unsigned getAvailableSize();
     void appendRecord(Record *record);
     void insertRecord(Record *record);
+    void deleteRecord(unsigned slotNum);
     void getRawData(char *data);
 };
 
