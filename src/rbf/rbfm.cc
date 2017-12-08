@@ -444,6 +444,8 @@ RC RecordBasedFileManager::addPageAndInsert(FileHandle &fileHandle, vector<Attri
 
 RC RecordBasedFileManager::findPageAndInsert(FileHandle &fileHandle, vector<Attribute> &recordDescriptor, char *data, RID &rid)
 {
+    bool APPEND_ONLY = true;
+
     Record *record = new Record(recordDescriptor, data);
     unsigned recordSize = record->sizeWithHeader(recordDescriptor);
 
@@ -452,10 +454,16 @@ RC RecordBasedFileManager::findPageAndInsert(FileHandle &fileHandle, vector<Attr
     fileHandle.readPage(pageNum, buffer);
     DataPage *lst = new DataPage(recordDescriptor, buffer);
     DataPage *page = lst;
-
+    
     // lst can't fit
     if (lst->getAvailableSize() + recordSize > PAGE_SIZE)
     {
+        if (APPEND_ONLY)
+        {
+            delete page;
+            return addPageAndInsert(fileHandle, recordDescriptor, data, rid);
+        }
+        
         // lst == first? only one page, just do append
         if (pageNum == 0)
         {
@@ -576,5 +584,59 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Att
 
 RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, const RID &rid)
 {
-    return -1;
+    cerr << "can't update." << endl;
+    exit(-1);
+
+    // remove all const restriction, void->char & clone
+    // vector<Attribute> c_recordDescriptor(recordDescriptor);
+    // unsigned dataSize = Record::getRecordSize(recordDescriptor, data);
+    // char c_data[dataSize];
+    // memcpy(c_data, data, dataSize);
+
+    // if (fileHandle.readPage(rid.pageNum, buffer) != 0)
+    // {
+    //     cerr << "read page failed" << endl;
+    //     return -1;
+    // }
+
+    // DataPage page(recordDescriptor, buffer);
+    // if (rid.slotNum >= page.records.size())
+    // {
+    //     cerr << "page.recordNum > rid.slotNum" << endl;
+    //     return -1;
+    // }
+
+    // Record *oldRecord = page.records[rid.slotNum];
+    // Record *newRecord = new Record(recordDescriptor, data);
+
+    // if (oldRecord->ptrFlag == 1)
+    // {
+    //     cerr << "update can't deal with record ptr now" << endl;
+    //     exit(-1);
+    // }
+    // if (oldRecord->ptrFlag == 2)
+    // {
+    //     // already deleted
+    //     return -1;
+    // }
+    
+    // // whether can fit the new record
+    // unsigned oldSize = oldRecord->sizeWithHeader(recordDescriptor);
+    // unsigned newSize = newRecord->sizeWithHeader(recordDescriptor);
+
+    // bool canFit = true;
+    // if (newSize > oldSize)
+    // {
+    //     canFit = false;
+    //     if (page.size + newSize - oldSize <= PAGE_SIZE)
+    //     {
+    //         canFit = true;
+    //     }
+    // }
+    
+    // if (canFit)
+    // {
+    //     page.updateRecord(rid.slotNum, newRecord);
+    //     return 0;
+    // }
 }
