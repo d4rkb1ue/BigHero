@@ -1,5 +1,152 @@
 #include "rbfm.h"
 
+RBFM_ScanIterator::RBFM_ScanIterator()
+    : fileHandle(nullptr),
+      attrType(TypeInt),
+      vcSize(0),
+      compOp(NO_OP),
+      value(nullptr),
+      nextPn(0),
+      nextSn(0),
+      currPg(nullptr)
+{
+}
+
+RBFM_ScanIterator::RBFM_ScanIterator(
+    FileHandle *fileHandle,
+    const vector<Attribute> recordDescriptor,
+    const string conditionAttribute,
+    const CompOp compOp,
+    const char *value,
+    const vector<string> attributeNames)
+    : fileHandle(fileHandle),
+      recordDescriptor(recordDescriptor),
+      conditionAttribute(conditionAttribute),
+      vcSize(0),
+      compOp(compOp),
+      value(nullptr),
+      attributeNames(attributeNames),
+      nextPn(0),
+      nextSn(0),
+      currPg(nullptr)
+{
+    if (attributeNames.size() != recordDescriptor.size())
+    {
+        // TODO: project attributes
+        cerr << "can't deal with attributeNames.size() != recordDescriptor.size()" << endl;
+        exit(-1);
+    }
+    if (compOp != NO_OP)
+    {
+        // find attribute type
+        unsigned attr = 0;
+        for (; attr < recordDescriptor.size(); attr++)
+        {
+            if (recordDescriptor[attr].name == conditionAttribute)
+            {
+                break;
+            }
+        }
+        if ((attr == recordDescriptor.size()) ||
+            (attr == 0 && recordDescriptor[0].name != conditionAttribute))
+        {
+            cerr << "Condition attribute not found." << endl;
+            exit(-1);
+        }
+
+        this->attrType = recordDescriptor[attr].type;
+
+        // copy value
+        if (this->attrType != TypeVarChar)
+        {
+            this->value = new char[4];
+            memcpy(this->value, value, 4);
+        }
+        else
+        {
+            memcpy(&vcSize, value, sizeof(unsigned));
+            this->value = new char[vcSize];
+            memcpy(this->value, value, vcSize + sizeof(unsigned));
+        }
+    }
+    getNextPage();
+}
+
+RBFM_ScanIterator::~RBFM_ScanIterator()
+{
+    if (value)
+    {
+        delete[] value;
+    }
+    if (currPg)
+    {
+        delete currPg;
+    }
+}
+
+RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
+{
+    if (compOp != NO_OP)
+    {
+        cerr << "getNextRecord can't deal with non-NO_OP" << endl;
+        exit(-1);
+    }
+    // end
+    if (!currPg)
+    {
+        return RBFM_EOF;
+    }
+
+    if (nextSn >= currPg->records.size())
+    {
+        getNextPage();
+        return getNextRecord(rid, data);
+    }
+
+    Record *record = currPg->records[nextSn];
+    if (record->ptrFlag != 0)
+    {
+        cerr << "can't scan delete/updated record" << endl;
+        exit(-1);
+    }
+
+    memcpy(data, record->data, record->sizeWithoutHeader(recordDescriptor));
+
+    rid.pageNum = nextPn - 1;
+    rid.slotNum = nextSn;
+
+    nextSn++;
+
+    return 0;
+}
+
+void RBFM_ScanIterator::getNextPage()
+{
+    // end of paged file
+    if (fileHandle->getNumberOfPages() <= nextPn)
+    {
+        if (currPg)
+        {
+            delete currPg;
+        }
+        currPg = nullptr;
+        return;
+    }
+    fileHandle->readPage(nextPn, buffer);
+    if (currPg)
+    {
+        delete currPg;
+    }
+    currPg = new DataPage(recordDescriptor, buffer);
+    nextPn++;
+    nextSn = 0;
+}
+
+RC RBFM_ScanIterator::close()
+{
+    return 0;
+}
+
 const string Record::RECORD_HEAD = "Rec:";
 const unsigned Record::REC_HEADER_SIZE = sizeof(int) + sizeof(RID) + 4;
 
@@ -116,7 +263,7 @@ string Record::toString(const vector<Attribute> &recordDescriptor)
     {
         return "[ptrFlag=" + to_string(ptrFlag) + "]";
     }
-    
+
     string s;
     unsigned offset = 0;
     unsigned attributeNum = recordDescriptor.size();
@@ -170,6 +317,83 @@ string Record::toString(const vector<Attribute> &recordDescriptor)
     return s;
 }
 
+unsigned Record::getAttribute(const vector<Attribute> &recordDescriptor, const string &attributeName, char *des)
+{
+    if (!data)
+    {
+        return 0;
+    }
+
+    unsigned offset = 0;
+    unsigned vcSize = 0;
+    unsigned attributeNum = recordDescriptor.size();
+    bool nullIndicators[attributeNum];
+    offset += parseNullIndicator(nullIndicators, recordDescriptor, data);
+
+    unsigned attr = 0;
+    for (; attr < attributeNum; attr++)
+    {
+        if (recordDescriptor[attr].name == attributeName)
+        {
+            break;
+        }
+    }
+
+    if ((attr == attributeNum) ||
+        (attr == 0 && recordDescriptor[attr].name != attributeName))
+    {
+        cerr << "can't found the attributeName" << endl;
+        exit(-1);
+    }
+
+    if (nullIndicators[attr])
+    {
+        return 0;
+    }
+
+    // pass all useless datas
+    for (unsigned i = 0; i < attr; i++)
+    {
+        if (nullIndicators[i])
+        {
+            continue;
+        }
+        switch (recordDescriptor[i].type)
+        {
+        case TypeInt:
+        case TypeReal:
+        {
+            offset += 4;
+            break;
+        }
+        case TypeVarChar:
+        {
+            memcpy(&vcSize, data + offset, sizeof(unsigned));
+            offset += sizeof(unsigned) + vcSize;
+            break;
+        }
+        }
+    }
+
+    switch (recordDescriptor[attr].type)
+    {
+    case TypeInt:
+    case TypeReal:
+    {
+        memcpy(des, data + offset, 4);
+        return 4;
+    }
+    case TypeVarChar:
+    {
+        memcpy(&vcSize, data + offset, sizeof(unsigned));
+        // copy both size and data
+        memcpy(des, data + offset, sizeof(unsigned) + vcSize);
+        return sizeof(unsigned) + vcSize;
+    }
+    }
+    return 0;
+}
+
 const unsigned DataPage::DATA_PAGE_HEADER_SIZE = sizeof(unsigned) * 2;
 
 DataPage::DataPage(vector<Attribute> recordDescriptor)
@@ -206,7 +430,7 @@ DataPage::DataPage(vector<Attribute> recordDescriptor, char *data)
             cerr << "can't deal with ptrFlag == 1" << endl;
             exit(-1);
         }
-        
+
         memcpy(&rid, data, sizeof(RID));
         data += sizeof(RID);
         Record *rec = nullptr;
@@ -317,7 +541,7 @@ void DataPage::deleteRecord(unsigned slotNum)
     size -= rec->sizeWithoutHeader(recordDescriptor);
     cerr << "size-=" << rec->sizeWithoutHeader(recordDescriptor) << "=" << size << endl;
     rec->ptrFlag = 2;
-    delete [] rec->data;
+    delete[] rec->data;
     rec->data = nullptr;
 }
 
@@ -454,7 +678,7 @@ RC RecordBasedFileManager::findPageAndInsert(FileHandle &fileHandle, vector<Attr
     fileHandle.readPage(pageNum, buffer);
     DataPage *lst = new DataPage(recordDescriptor, buffer);
     DataPage *page = lst;
-    
+
     // lst can't fit
     if (lst->getAvailableSize() + recordSize > PAGE_SIZE)
     {
@@ -463,7 +687,7 @@ RC RecordBasedFileManager::findPageAndInsert(FileHandle &fileHandle, vector<Attr
             delete page;
             return addPageAndInsert(fileHandle, recordDescriptor, data, rid);
         }
-        
+
         // lst == first? only one page, just do append
         if (pageNum == 0)
         {
@@ -575,7 +799,7 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Att
         // already deleted
         return -1;
     }
-    
+
     page.deleteRecord(rid.slotNum);
     page.getRawData(buffer);
     fileHandle.writePage(rid.pageNum, buffer);
@@ -619,7 +843,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
     //     // already deleted
     //     return -1;
     // }
-    
+
     // // whether can fit the new record
     // unsigned oldSize = oldRecord->sizeWithHeader(recordDescriptor);
     // unsigned newSize = newRecord->sizeWithHeader(recordDescriptor);
@@ -633,10 +857,55 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
     //         canFit = true;
     //     }
     // }
-    
+
     // if (canFit)
     // {
     //     page.updateRecord(rid.slotNum, newRecord);
     //     return 0;
     // }
+}
+
+RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, const string &attributeName, void *data)
+{
+    if (fileHandle.readPage(rid.pageNum, buffer) != 0)
+    {
+        cerr << "read page failed" << endl;
+        return -1;
+    }
+
+    DataPage page(recordDescriptor, buffer);
+    if (rid.slotNum >= page.records.size())
+    {
+        cerr << "page.recordNum > rid.slotNum" << endl;
+        return -1;
+    }
+
+    Record *rec = page.records[rid.slotNum];
+
+    if (rec->ptrFlag != 0)
+    {
+        cerr << "can't deal with record ptr now" << endl;
+        exit(-1);
+    }
+
+    rec->getAttribute(recordDescriptor, attributeName, static_cast<char *>(data));
+    return 0;
+}
+
+RC RecordBasedFileManager::scan(FileHandle &fileHandle,
+                                const vector<Attribute> &recordDescriptor,
+                                const string &conditionAttribute,
+                                const CompOp compOp,
+                                const void *value,
+                                const vector<string> &attributeNames,
+                                RBFM_ScanIterator &rbfm_ScanIterator)
+{
+    RBFM_ScanIterator *ret = new RBFM_ScanIterator(&fileHandle,
+                                                   recordDescriptor,
+                                                   conditionAttribute,
+                                                   compOp,
+                                                   static_cast<const char *>(value),
+                                                   attributeNames);
+    rbfm_ScanIterator = *ret;
+    return 0;
 }

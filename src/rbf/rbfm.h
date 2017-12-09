@@ -10,6 +10,10 @@
 
 using namespace std;
 
+class Record;
+class DataPage;
+class RecordBasedFileManager;
+
 typedef struct
 {
     unsigned pageNum;
@@ -43,10 +47,34 @@ typedef enum { EQ_OP = 0, // =
 class RBFM_ScanIterator
 {
   public:
-    RBFM_ScanIterator(){};
-    ~RBFM_ScanIterator(){};
-    RC getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
-    RC close() { return -1; };
+    FileHandle *fileHandle;
+    vector<Attribute> recordDescriptor;
+    string conditionAttribute;
+    AttrType attrType;
+    // the standard size will be vcSize + sizeof(unsigned)
+    unsigned vcSize;
+    CompOp compOp;
+    // for TypeVarChar, its still contains the size [size][data]
+    char *value;
+    vector<string> attributeNames;
+    unsigned nextPn;
+    unsigned nextSn;
+    DataPage *currPg;
+    char buffer[PAGE_SIZE];
+
+    RBFM_ScanIterator();
+    RBFM_ScanIterator(
+        FileHandle *fileHandle,
+        const vector<Attribute> recordDescriptor,
+        const string conditionAttribute,
+        const CompOp compOp,
+        const char *value,
+        const vector<string> attributeNames);
+    ~RBFM_ScanIterator();
+
+    RC getNextRecord(RID &rid, void *data);
+    void getNextPage();
+    RC close();
 };
 
 class Record
@@ -75,8 +103,10 @@ class Record
     // if pointered(moved), size will be REC_HEADER_SIZE (data = NULL, ptrFlg = 1, rid = new rid)
     unsigned sizeWithoutHeader(const vector<Attribute> &recordDescriptor);
     unsigned sizeWithHeader(const vector<Attribute> &recordDescriptor);
-    
+
     string toString(const vector<Attribute> &recordDescriptor);
+    // return attribute actual data size
+    unsigned getAttribute(const vector<Attribute> &recordDescriptor, const string &attributeName, char *des);
 };
 
 // DataPage: [Size][RecordNum][Records Data]...
@@ -90,7 +120,7 @@ class DataPage
 
     // this is a DUP data, same as SUM(records.forEach.size())
     unsigned size;
-    
+
     DataPage(vector<Attribute> recordDescriptor);
     DataPage(vector<Attribute> recordDescriptor, char *data);
     ~DataPage();
