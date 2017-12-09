@@ -81,8 +81,10 @@ public:
     ~RelationManager();
 
     void cpyAndInc(char des[], unsigned &offset, const void *src, unsigned len = 4);
+    void readAndInc(void *des, unsigned &offset, const void *src, unsigned len = 4);
     void prepareTableRecordInBuf(const unsigned tableId, const string tableName);
     void prepareColumnRecordInBuf(const unsigned tableId, const string name, const AttrType type, const unsigned len, const unsigned pos);
+    void readColumnRecordInBuf(int &tableId, string &name, AttrType &type, int &len, int &pos);
 };
 
 #endif

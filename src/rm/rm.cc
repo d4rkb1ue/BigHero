@@ -143,12 +143,67 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 
 RC RelationManager::deleteTable(const string &tableName)
 {
+    Utils::assertExit("don't support deleteTable!");
     return -1;
 }
 
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
 {
-    return -1;
+    // get tableId
+    int tableId = 0;
+    RID rid = {0, 0};
+    vector<string> allTableAttrs;
+    for (unsigned i = 0; i < TABLES_ATTRS.size(); i++)
+    {
+        allTableAttrs.push_back(TABLES_ATTRS[i].name);
+    }
+
+    // make standard VarChar Data
+    Utils::makeStandardString(tableName, buffer);
+
+    // scan Tables.tbl
+    FileHandle tableFH;
+    RBFM_ScanIterator tableIt;
+    Utils::assertExit("opentable filed", rbfm->openFile(TABLES_TBL + PREFIX, tableFH));
+
+    rbfm->scan(tableFH, TABLES_ATTRS, "table-name", EQ_OP, buffer, allTableAttrs, tableIt);
+
+    if (tableIt.getNextRecord(rid, buffer) == RBFM_EOF)
+    {
+        cerr << "tableName not found" << endl;
+        return -1;
+    }
+    rbfm->readAttribute(tableFH, TABLES_ATTRS, rid, "table-id", &tableId);
+    rbfm->closeFile(tableFH);
+
+    // scan Columns.tbl
+    vector<string> allColAttrs;
+    for (unsigned i = 0; i < COLUMNS_ATTRS.size(); i++)
+    {
+        allColAttrs.push_back(COLUMNS_ATTRS[i].name);
+    }
+
+    FileHandle colFH;
+    RBFM_ScanIterator colIt;
+    Utils::assertExit("open columns.tbl failed", rbfm->openFile(COLUMNS_TBL + PREFIX, colFH));
+
+    rbfm->scan(colFH, COLUMNS_ATTRS, "table-id", EQ_OP, &tableId, allColAttrs, colIt);
+
+    attrs.clear();
+    string name;
+    AttrType type = TypeInt;
+    int len = 0;
+    int pos = 0;
+    while (colIt.getNextRecord(rid, buffer) != RBFM_EOF)
+    {
+        readColumnRecordInBuf(tableId, name, type, len, pos);
+        // rbfm->printRecord(COLUMNS_ATTRS, buffer);
+        // cerr << name << ", " << type << ", " << len << ", " << pos << endl;
+        Utils::assertExit("column position unordered.", static_cast<unsigned>(pos) != attrs.size());
+        attrs.push_back({name, type, static_cast<unsigned>(len)});
+    }
+
+    return 0;
 }
 
 RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
@@ -197,6 +252,13 @@ void RelationManager::cpyAndInc(char des[], unsigned &offset, const void *src, u
     offset += len;
 }
 
+void RelationManager::readAndInc(void *des, unsigned &offset, const void *src, unsigned len)
+{
+    const char *_src = static_cast<const char *>(src);
+    memcpy(des, _src + offset, len);
+    offset += len;
+}
+
 void RelationManager::prepareTableRecordInBuf(const unsigned tableId, const string tableName)
 {
     memset(buffer, 0, PAGE_SIZE);
@@ -228,4 +290,21 @@ void RelationManager::prepareColumnRecordInBuf(const unsigned tableId, const str
     cpyAndInc(buffer, offset, &uType);
     cpyAndInc(buffer, offset, &len);
     cpyAndInc(buffer, offset, &pos);
+}
+
+void RelationManager::readColumnRecordInBuf(int &tableId, string &name, AttrType &type, int &len, int &pos)
+{
+    unsigned offset = 1;
+    unsigned strSize = 0;
+
+    readAndInc(&tableId, offset, buffer);
+    memcpy(&strSize, buffer + offset, 4);
+    offset += 4;
+    char nameBuf[strSize + 1];
+    readAndInc(nameBuf, offset, buffer, strSize);
+    nameBuf[strSize] = '\0';
+    name = string(nameBuf);
+    readAndInc(&type, offset, buffer);
+    readAndInc(&len, offset, buffer);
+    readAndInc(&pos, offset, buffer);
 }

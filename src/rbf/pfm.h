@@ -31,6 +31,19 @@ using namespace std;
 class FileHandle;
 
 /****************************************************
+ *                      Utils                       *
+ ****************************************************/
+class Utils
+{
+  public:
+    // return total standard size
+    static unsigned makeStandardString(const string s, char *data);
+    static void assertExit(const string e, RC ret);
+    static void assertExit(const string e, bool b = true);
+    static unsigned getVCSizeWithHead(const char *data);
+};
+
+/****************************************************
  *                  PagedFileManager                *
  ****************************************************/
 class PagedFileManager

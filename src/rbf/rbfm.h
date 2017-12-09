@@ -49,8 +49,7 @@ class RBFM_ScanIterator
   public:
     FileHandle *fileHandle;
     vector<Attribute> recordDescriptor;
-    string conditionAttribute;
-    AttrType attrType;
+    Attribute conditionAttribute;
     // the standard size will be vcSize + sizeof(unsigned)
     unsigned vcSize;
     CompOp compOp;
@@ -75,6 +74,7 @@ class RBFM_ScanIterator
     RC getNextRecord(RID &rid, void *data);
     void getNextPage();
     RC close();
+    int compareTo(char *thatVal);
 };
 
 class Record

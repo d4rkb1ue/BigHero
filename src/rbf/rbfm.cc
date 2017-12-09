@@ -2,7 +2,6 @@
 
 RBFM_ScanIterator::RBFM_ScanIterator()
     : fileHandle(nullptr),
-      attrType(TypeInt),
       vcSize(0),
       compOp(NO_OP),
       value(nullptr),
@@ -21,7 +20,6 @@ RBFM_ScanIterator::RBFM_ScanIterator(
     const vector<string> attributeNames)
     : fileHandle(fileHandle),
       recordDescriptor(recordDescriptor),
-      conditionAttribute(conditionAttribute),
       vcSize(0),
       compOp(compOp),
       value(nullptr),
@@ -30,12 +28,9 @@ RBFM_ScanIterator::RBFM_ScanIterator(
       nextSn(0),
       currPg(nullptr)
 {
-    if (attributeNames.size() != recordDescriptor.size())
-    {
-        // TODO: project attributes
-        cerr << "can't deal with attributeNames.size() != recordDescriptor.size()" << endl;
-        exit(-1);
-    }
+    Utils::assertExit("can't deal with attributeNames.size() != recordDescriptor.size()",
+                      attributeNames.size() != recordDescriptor.size());
+
     if (compOp != NO_OP)
     {
         // find attribute type
@@ -53,20 +48,19 @@ RBFM_ScanIterator::RBFM_ScanIterator(
             cerr << "Condition attribute not found." << endl;
             exit(-1);
         }
-
-        this->attrType = recordDescriptor[attr].type;
+        this->conditionAttribute = recordDescriptor[attr];
 
         // copy value
-        if (this->attrType != TypeVarChar)
+        if (this->conditionAttribute.type != TypeVarChar)
         {
             this->value = new char[4];
             memcpy(this->value, value, 4);
         }
         else
         {
-            memcpy(&vcSize, value, sizeof(unsigned));
-            this->value = new char[vcSize];
-            memcpy(this->value, value, vcSize + sizeof(unsigned));
+            unsigned size = Utils::getVCSizeWithHead(value);
+            this->value = new char[size];
+            memcpy(this->value, value, size);
         }
     }
     getNextPage();
@@ -86,11 +80,6 @@ RBFM_ScanIterator::~RBFM_ScanIterator()
 
 RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
 {
-    if (compOp != NO_OP)
-    {
-        cerr << "getNextRecord can't deal with non-NO_OP" << endl;
-        exit(-1);
-    }
     // end
     if (!currPg)
     {
@@ -104,11 +93,29 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
     }
 
     Record *record = currPg->records[nextSn];
-    if (record->ptrFlag != 0)
+
+    if (compOp != NO_OP)
     {
-        cerr << "can't scan delete/updated record" << endl;
-        exit(-1);
+        record->getAttribute(recordDescriptor, conditionAttribute.name, buffer);
+        int compareRes = compareTo(buffer);
+        switch (compOp)
+        {
+        case EQ_OP:
+        {
+            if (compareRes != 0)
+            {
+                nextSn++;
+                return getNextRecord(rid, data);
+            }
+            break;
+        }
+        default:
+            Utils::assertExit("don't support compOP=" + compOp);
+        }
     }
+
+    Utils::assertExit("next record should not be nullptr", !record);
+    Utils::assertExit("can't scan delete/updated record", record->ptrFlag != 0);
 
     memcpy(data, record->data, record->sizeWithoutHeader(recordDescriptor));
 
@@ -140,6 +147,63 @@ void RBFM_ScanIterator::getNextPage()
     currPg = new DataPage(recordDescriptor, buffer);
     nextPn++;
     nextSn = 0;
+}
+
+int RBFM_ScanIterator::compareTo(char *thatVal)
+{
+    switch (conditionAttribute.type)
+    {
+    case TypeInt:
+    {
+        int int_this = 0, int_that = 0;
+        memcpy(&int_this, value, sizeof(int));
+        memcpy(&int_that, thatVal, sizeof(int));
+        // cerr << "comparing " << int_this << " ? " << int_that << endl;
+        return int_this - int_that;
+    }
+    case TypeReal:
+    {
+        float f_this = 0, f_that = 0;
+        memcpy(&f_this, value, sizeof(float));
+        memcpy(&f_that, thatVal, sizeof(float));
+        // cerr << "comparing " << f_this << " ? " << f_that << endl;
+        if (f_this - f_that < 0.001 && f_that - f_this < 0.001)
+        {
+            return 0;
+        }
+        return ((f_this - f_that) < 0.0 ? -1 : 1);
+    }
+    case TypeVarChar:
+    {
+        unsigned size = Utils::getVCSizeWithHead(value);
+        unsigned thatSize = Utils::getVCSizeWithHead(thatVal);
+
+        // empty string
+        if (size == sizeof(unsigned))
+        {
+            return thatSize == sizeof(unsigned) ? 0 : -1;
+        }
+        if (thatSize == sizeof(unsigned))
+        {
+            return 1;
+        }
+
+        // + '\0'
+        char _c[size - sizeof(unsigned) + 1];
+        memcpy(_c, value + sizeof(unsigned), size - sizeof(unsigned));
+        _c[size - sizeof(unsigned)] = '\0';
+        string _s(_c);
+
+        char _c_that[thatSize - sizeof(unsigned) + 1];
+        memcpy(_c_that, thatVal + sizeof(unsigned), thatSize - sizeof(unsigned));
+        _c_that[thatSize - sizeof(unsigned)] = '\0';
+        string _s_that(_c_that);
+
+        // cerr << "comparing \"" << _s << "\" ? \"" << _s_that << "\"" << endl;
+        return _s.compare(_s_that);
+    }
+    }
+    return 0;
 }
 
 RC RBFM_ScanIterator::close()

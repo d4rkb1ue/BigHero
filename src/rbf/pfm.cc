@@ -1,6 +1,43 @@
 #include "pfm.h"
 
 /****************************************************
+ *                      Utils                       *
+ ****************************************************/
+unsigned Utils::makeStandardString(const string s, char *data)
+{
+    unsigned len = s.length();
+    memcpy(data, &len, sizeof(unsigned));
+    memcpy(data + sizeof(unsigned), s.c_str(), len);
+    return len + sizeof(unsigned);
+}
+
+void Utils::assertExit(const string e, RC ret)
+{
+    if (ret != 0)
+    {
+        cerr << e << endl;
+        exit(-1);
+    }
+}
+
+void Utils::assertExit(const string e, bool b)
+{
+    if (b)
+    {
+        cerr << e << endl;
+        exit(-1);
+    }
+}
+
+unsigned Utils::getVCSizeWithHead(const char *data)
+{
+    unsigned s = 0;
+    memcpy(&s, data, sizeof(unsigned));
+    return s + sizeof(unsigned);
+}
+
+
+/****************************************************
  *                  PagedFileManager                *
  ****************************************************/
 
@@ -165,7 +202,7 @@ FileHandle::FileHandle(FILE *f)
     filePtr = f;
 
     char *buffer = new char[PAGE_SIZE];
-    
+
     if (getFileSize() > 0)
     {
         // read file header
@@ -212,7 +249,7 @@ FileHandle::FileHandle(FILE *f)
         // init fileHeader and DirPages
         flushAll();
     }
-    delete [] buffer;
+    delete[] buffer;
 }
 
 FileHandle::~FileHandle()
@@ -362,8 +399,8 @@ RC FileHandle::flushAll()
     }
     fflush(filePtr);
     rewind(filePtr);
-    
-    delete [] buffer;
+
+    delete[] buffer;
 
     return 0;
 }
@@ -386,7 +423,7 @@ RC FileHandle::appendPage(const void *data, unsigned dataSize)
 {
     appendPageCounter++;
     pageCount++;
-    
+
     // need add new directory page
     if (pageCount > DIR_PAGE_LEN * dirCount)
     {

@@ -1,0 +1,48 @@
+1. Basic information
+Team number (e.g., 01) : 30
+#1 Student ID : 18201573
+#1 Student Name : SHENG SU
+OS (bit) : Ubuntu 14.04 (32-bit)
+gcc version : 5.4.1 20160904 (Ubuntu 5.4.1-2ubuntu1~14.04)
+
+
+2. Catalog information about Index
+- Show your catalog information about an index (tables, columns). 
+    const vector<Attribute> TABLES_ATTRS = {
+        {"table-id", TypeInt, 4},
+        {"table-name", TypeVarChar, 50},
+        {"file-name", TypeVarChar, 50}};
+    const vector<Attribute> COLUMNS_ATTRS = {
+        {"table-id", TypeInt, 4},
+        {"column-name", TypeVarChar, 50},
+        {"column-type", TypeInt, 4},
+        {"column-length", TypeInt, 4},
+        {"column-position", TypeInt, 4}};
+
+3. Block Nested Loop Join (If you have implemented this feature)
+- Describe how your block nested loop join works (especially, how you manage the given buffers.)
+
+
+4. Index Nested Loop Join (If you have implemented this feature)
+- Describe how your grace hash join works.
+
+
+5. Grace Hash Join (If you have implemented this feature)
+- Describe how your grace hash join works (especially, in-memory structure).
+
+
+6. Aggregation
+- Describe how your aggregation (basic, group-based hash) works.
+
+
+7. Implementation Detail
+- Have you added your own source file (.cc or .h)?
+
+- Have you implemented any optional features? Then, describe them here.
+
+- Other implementation details:
+
+
+6. Other (optional)
+- Freely use this section to tell us about things that are related to the project 4, but not related to the other sections (optional)
+
