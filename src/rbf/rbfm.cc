@@ -93,7 +93,17 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
 
     if (compOp != NO_OP)
     {
-        record->getAttribute(recordDescriptor, conditionAttribute.name, buffer);
+        unsigned attrSz = record->getAttribute(recordDescriptor, conditionAttribute.name, buffer);
+        // no data return, may be null
+        if (attrSz == 0)
+        {
+            nextSn++;
+            return getNextRecord(rid, data);
+        }
+
+        // compareRes = target - record value
+        // compareRes < 0 => (record value > target)
+        // compareRes > 0 => (record value < target)
         int compareRes = compareTo(buffer);
         switch (compOp)
         {
@@ -102,12 +112,56 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
             if (compareRes != 0)
             {
                 nextSn++;
+                // 递归写法有潜在的爆栈的可能
                 return getNextRecord(rid, data);
             }
             break;
         }
-        default:
-            Utils::assertExit("don't support compOP=" + compOp);
+        case LT_OP:
+        {
+            if (compareRes <= 0)
+            {
+                nextSn++;
+                return getNextRecord(rid, data);
+            }
+            break;
+        }
+        case LE_OP:
+        {
+            if (compareRes < 0)
+            {
+                nextSn++;
+                return getNextRecord(rid, data);
+            }
+            break;
+        }
+        case GT_OP:
+        {
+            if (compareRes >= 0)
+            {
+                nextSn++;
+                return getNextRecord(rid, data);
+            }
+            break;
+        }
+        case GE_OP:
+        {
+            if (compareRes > 0)
+            {
+                nextSn++;
+                return getNextRecord(rid, data);
+            }
+            break;
+        }
+        case NE_OP:
+        {
+            if (compareRes == 0)
+            {
+                nextSn++;
+                return getNextRecord(rid, data);
+            }
+            break;
+        }
         }
     }
 
@@ -332,7 +386,7 @@ string Record::toString(const vector<Attribute> &recordDescriptor)
     unsigned attributeNum = recordDescriptor.size();
     bool nullIndicators[attributeNum];
     offset += parseNullIndicator(nullIndicators, recordDescriptor, data);
-
+    
     // parse attributes
     int _int;
     float _float;

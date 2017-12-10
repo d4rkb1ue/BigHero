@@ -106,16 +106,16 @@ int TEST_RM_PRIVATE_0(const string &tableName)
     }
 
     // Delete a Table
-    rc = rm->deleteTable(tableName);
-    if(rc != success) {
-        cerr << "***** RelationManager::deleteTale() should not fail. RM Test Case Private 0 failed. *****" << endl << endl;
-		free(returnedData);
-		for(int i = 0; i < numTuples; i++)
-		{
-			free(tuples[i]);
-		}
-        return -1;
-    }
+    // rc = rm->deleteTable(tableName);
+    // if(rc != success) {
+    //     cerr << "***** RelationManager::deleteTale() should not fail. RM Test Case Private 0 failed. *****" << endl << endl;
+	// 	free(returnedData);
+	// 	for(int i = 0; i < numTuples; i++)
+	// 	{
+	// 		free(tuples[i]);
+	// 	}
+    //     return -1;
+    // }
     
     free(returnedData);
     for(int i = 0; i < numTuples; i++)

@@ -41,13 +41,22 @@ unsigned Utils::makeNullIndicator(const bool ni[], const unsigned len, void *dat
     unsigned size = (len - 1) / 8 + 1;
     char nullIndicators[size];
     memset(nullIndicators, 0, size);
-    for (unsigned i = 0; i < len; i++)
+    
+    unsigned i = 0;
+    for (; i < len; i++)
     {
         if (ni[i])
         {
             nullIndicators[i / 8] |= (char)1 << (7 - i % 8);
         }
     }
+
+    // remain bits all set to 1
+    // for (; i < size * 8; i++)
+    // {
+    //     nullIndicators[i / 8] |= (char)1 << (7 - i % 8);
+    // }
+
     memcpy(data, nullIndicators, size);
     return size;
 }
