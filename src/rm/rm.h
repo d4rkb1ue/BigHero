@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "../rbf/rbfm.h"
+#include "../ix/ix.h"
 
 using namespace std;
 
@@ -16,6 +17,7 @@ class RM_ScanIterator
   private:
     RBFM_ScanIterator *it;
     FileHandle *fileHandle;
+
   public:
     RM_ScanIterator();
     RM_ScanIterator(
@@ -31,11 +33,21 @@ class RM_ScanIterator
     RC close();
 };
 
+class RM_IndexScanIterator
+{
+  public:
+    RM_IndexScanIterator(){};
+    ~RM_IndexScanIterator(){};
+    RC getNextEntry(RID &rid, void *key) { return -1; };
+    RC close() { return -1; };
+};
+
 // Relation Manager
 class RelationManager
 {
   public:
     const string PREFIX = ".tbl";
+    const string INDEX_PREFIX = ".idx";
     const string TABLES_TBL = "Tables";
     const int TABLES_ID = 0;
     const string COLUMNS_TBL = "Columns";
@@ -77,14 +89,25 @@ class RelationManager
             const vector<string> &attributeNames,
             RM_ScanIterator &rm_ScanIterator);
 
-    // Extra credit work (10 points)
-  public:
-    RC addAttribute(const string &tableName, const Attribute &attr);
+    RC createIndex(const string &tableName, const string &attributeName);
+    RC destroyIndex(const string &tableName, const string &attributeName);
+    string getIdxFileName(const string &tableName, const string &attributeName);
+    // indexScan returns an iterator to allow the caller to go through qualified entries in index
+    RC indexScan(const string &tableName,
+                 const string &attributeName,
+                 const void *lowKey,
+                 const void *highKey,
+                 bool lowKeyInclusive,
+                 bool highKeyInclusive,
+                 RM_IndexScanIterator &rm_IndexScanIterator);
 
+
+    RC addAttribute(const string &tableName, const Attribute &attr);
     RC dropAttribute(const string &tableName, const string &attributeName);
 
   protected:
     RecordBasedFileManager *rbfm;
+    IndexManager *ix;
     char buffer[PAGE_SIZE];
 
     RelationManager();

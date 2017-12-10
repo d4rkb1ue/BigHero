@@ -96,7 +96,7 @@ class Record
     RID rid;
     char *data;
 
-    Record(vector<Attribute> recordDescriptor, char *rawData);
+    Record(vector<Attribute> recordDescriptor, const char *rawData);
     ~Record();
 
     // if deleted, size will be REC_HEADER_SIZE (data = NULL, ptrFlag = 2, rid = rid)

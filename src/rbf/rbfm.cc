@@ -331,7 +331,7 @@ unsigned Record::parseNullIndicator(bool nullIndicators[], const vector<Attribut
     return (attributeNum - 1) / 8 + 1;
 }
 
-Record::Record(vector<Attribute> recordDescriptor, char *rawData)
+Record::Record(vector<Attribute> recordDescriptor, const char *rawData)
     : ptrFlag(-1),
       data(nullptr)
 {

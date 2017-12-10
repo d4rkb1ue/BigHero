@@ -34,8 +34,7 @@ RM_ScanIterator::RM_ScanIterator(
         conditionAttribute,
         compOp,
         value,
-        attributeNames
-    );
+        attributeNames);
 }
 
 RC RM_ScanIterator::getNextTuple(RID &rid, void *data)
@@ -57,6 +56,7 @@ RelationManager *RelationManager::instance()
 RelationManager::RelationManager()
 {
     rbfm = RecordBasedFileManager::instance();
+    ix = IndexManager::instance();
 }
 
 RelationManager::~RelationManager()
@@ -224,7 +224,7 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
     }
     rbfm->readAttribute(tableFH, TABLES_ATTRS, rid, "table-id", &tableId);
     rbfm->closeFile(tableFH);
-    
+
     // scan Columns.tbl
     vector<string> allColAttrs;
     for (unsigned i = 0; i < COLUMNS_ATTRS.size(); i++)
@@ -270,6 +270,22 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
         return -1;
     }
     rbfm->insertRecord(fileHandle, recordDescriptor, data, rid);
+
+    // insert to index
+    for (unsigned i = 0; i < recordDescriptor.size(); i++)
+    {
+        IXFileHandle ixfileHandle;
+        // index exist
+        if (ix->openFile(getIdxFileName(tableName, recordDescriptor[i].name), ixfileHandle) == 0)
+        {
+            Record record(recordDescriptor, static_cast<const char *>(data));
+            record.getAttribute(recordDescriptor, recordDescriptor[i].name, buffer);
+            ix->insertEntry(ixfileHandle, recordDescriptor[i], buffer, rid);
+            // ix->printBtree(ixfileHandle, recordDescriptor[i]);
+            ix->closeFile(ixfileHandle);
+        }
+    }
+
     rbfm->closeFile(fileHandle);
     return 0;
 }
@@ -359,15 +375,14 @@ RC RelationManager::scan(const string &tableName,
         cerr << "can't open .tbl" + tableName << endl;
         return -1;
     }
-    
+
     RM_ScanIterator *it = new RM_ScanIterator(
         fileHandle,
         recordDescriptor,
         conditionAttribute,
         compOp,
-        static_cast<const char*>(value),
-        attributeNames
-    );
+        static_cast<const char *>(value),
+        attributeNames);
 
     rm_ScanIterator = *it;
     return 0;
@@ -434,4 +449,70 @@ void RelationManager::readColumnRecordInBuf(int &tableId, string &name, AttrType
     readAndInc(&type, offset, buffer);
     readAndInc(&len, offset, buffer);
     readAndInc(&pos, offset, buffer);
+}
+
+RC RelationManager::createIndex(const string &tableName, const string &attributeName)
+{
+    if (ix->createFile(getIdxFileName(tableName, attributeName)) != 0)
+    {
+        return -1;
+    }
+    // create index from exist datas
+    FileHandle fileHandle;
+    IXFileHandle ixfileHandle;
+    // have existing table file
+    if (rbfm->openFile(tableName + PREFIX, fileHandle) == 0)
+    {
+        vector<Attribute> recordDescriptor;
+        RBFM_ScanIterator it;
+        vector<string> attr;
+        RID rid;
+        Attribute attribute;
+
+        ix->openFile(getIdxFileName(tableName, attributeName), ixfileHandle);
+        getAttributes(tableName, recordDescriptor);
+        attr.push_back(attributeName);
+        for (unsigned i = 0; i < recordDescriptor.size(); i++)
+        {
+            if (recordDescriptor[i].name == attributeName)
+            {
+                attribute = recordDescriptor[i];
+                break;
+            }
+        }
+        rbfm->scan(fileHandle, recordDescriptor, "", NO_OP, nullptr, attr, it);
+
+        while (it.getNextRecord(rid, buffer) != RBFM_EOF)
+        {
+            Record record(recordDescriptor, static_cast<const char *>(buffer));
+            record.getAttribute(recordDescriptor, attributeName, buffer);
+            ix->insertEntry(ixfileHandle, attribute, buffer, rid);
+            // rbfm->readAttribute(fileHandle, rid, attributeName, buffer);
+        }
+        // ix->printBtree(ixfileHandle, attribute);
+        ix->closeFile(ixfileHandle);
+        rbfm->closeFile(fileHandle);
+    }
+    return 0;
+}
+
+RC RelationManager::destroyIndex(const string &tableName, const string &attributeName)
+{
+    return ix->destroyFile(getIdxFileName(tableName, attributeName));
+}
+
+string RelationManager::getIdxFileName(const string &tableName, const string &attributeName)
+{
+    return tableName + "_" + attributeName + "_" + INDEX_PREFIX;
+}
+
+RC RelationManager::indexScan(const string &tableName,
+                              const string &attributeName,
+                              const void *lowKey,
+                              const void *highKey,
+                              bool lowKeyInclusive,
+                              bool highKeyInclusive,
+                              RM_IndexScanIterator &rm_IndexScanIterator)
+{
+    return -1;
 }
