@@ -15,6 +15,7 @@ class RM_ScanIterator
 {
   private:
     RBFM_ScanIterator *it;
+    FileHandle *fileHandle;
   public:
     RM_ScanIterator();
     RM_ScanIterator(

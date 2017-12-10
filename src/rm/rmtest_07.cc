@@ -43,8 +43,8 @@ RC TEST_RM_7(const string &tableName)
     rmsi.close();
     
     // Delete a Table
-    rc = rm->deleteTable(tableName);
-    assert(rc == success && "RelationManager::deleteTable() should not fail.");
+    // rc = rm->deleteTable(tableName);
+    // assert(rc == success && "RelationManager::deleteTable() should not fail.");
 
     free(returnedData);
     cout << "***** Test Case 7 Finished. The result will be examined. *****" << endl << endl;

@@ -1,7 +1,8 @@
 #include "rm.h"
 
 RM_ScanIterator::RM_ScanIterator()
-    : it(nullptr)
+    : it(nullptr),
+      fileHandle(nullptr)
 {
 }
 
@@ -10,6 +11,10 @@ RM_ScanIterator::~RM_ScanIterator()
     if (it)
     {
         delete it;
+    }
+    if (fileHandle)
+    {
+        RecordBasedFileManager::instance()->closeFile(*fileHandle);
     }
 }
 
@@ -20,7 +25,8 @@ RM_ScanIterator::RM_ScanIterator(
     const CompOp compOp,
     const char *value,
     const vector<string> attributeNames)
-    : it(nullptr)
+    : it(nullptr),
+      fileHandle(fileHandle)
 {
     it = new RBFM_ScanIterator(
         fileHandle,
@@ -151,6 +157,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
         }
 
         tableId += 1;
+        rbfm->closeFile(fileHandle2);
         // cerr << "new TableId=" << tableId << endl;
     }
 
@@ -206,7 +213,7 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
     // scan Tables.tbl
     FileHandle tableFH;
     RBFM_ScanIterator tableIt;
-    Utils::assertExit("opentable filed", rbfm->openFile(TABLES_TBL + PREFIX, tableFH));
+    Utils::assertExit("open tables.tbl filed", rbfm->openFile(TABLES_TBL + PREFIX, tableFH));
 
     rbfm->scan(tableFH, TABLES_ATTRS, "table-name", EQ_OP, buffer, allTableAttrs, tableIt);
 
@@ -244,7 +251,7 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
         Utils::assertExit("column position unordered.", static_cast<unsigned>(pos) != attrs.size());
         attrs.push_back({name, type, static_cast<unsigned>(len)});
     }
-
+    rbfm->closeFile(colFH);
     return 0;
 }
 
@@ -262,7 +269,9 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
         cerr << "can't open .tbl" + tableName << endl;
         return -1;
     }
-    return rbfm->insertRecord(fileHandle, recordDescriptor, data, rid);
+    rbfm->insertRecord(fileHandle, recordDescriptor, data, rid);
+    rbfm->closeFile(fileHandle);
+    return 0;
 }
 
 RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
@@ -289,7 +298,9 @@ RC RelationManager::readTuple(const string &tableName, const RID &rid, void *dat
         cerr << "can't open .tbl" + tableName << endl;
         return -1;
     }
-    return rbfm->readRecord(fileHandle, recordDescriptor, rid, data);
+    rbfm->readRecord(fileHandle, recordDescriptor, rid, data);
+    rbfm->closeFile(fileHandle);
+    return 0;
 }
 
 RC RelationManager::printTuple(const vector<Attribute> &attrs, const void *data)
@@ -324,7 +335,9 @@ RC RelationManager::readAttribute(const string &tableName, const RID &rid, const
     unsigned nullIndicatorSize = Utils::makeNullIndicator(ni, recordDescriptor.size(), data);
 
     // rbfm return without null indicators
-    return rbfm->readAttribute(fileHandle, recordDescriptor, rid, attributeName, static_cast<char *>(data) + nullIndicatorSize);
+    rbfm->readAttribute(fileHandle, recordDescriptor, rid, attributeName, static_cast<char *>(data) + nullIndicatorSize);
+    rbfm->closeFile(fileHandle);
+    return 0;
 }
 
 RC RelationManager::scan(const string &tableName,
