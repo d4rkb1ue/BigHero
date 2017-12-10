@@ -105,8 +105,12 @@ class Record
     unsigned sizeWithHeader(const vector<Attribute> &recordDescriptor);
 
     string toString(const vector<Attribute> &recordDescriptor);
+    
     // return attribute actual data size
     unsigned getAttribute(const vector<Attribute> &recordDescriptor, const string &attributeName, char *des);
+    
+    // return projected data size
+    unsigned attributeProject(const vector<Attribute> &recordDescriptor, const vector<string> attributeNames, char *des);
 };
 
 // DataPage: [Size][RecordNum][Records Data]...

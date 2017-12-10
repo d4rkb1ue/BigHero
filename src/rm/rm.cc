@@ -1,5 +1,47 @@
 #include "rm.h"
 
+RM_ScanIterator::RM_ScanIterator()
+    : it(nullptr)
+{
+}
+
+RM_ScanIterator::~RM_ScanIterator()
+{
+    if (it)
+    {
+        delete it;
+    }
+}
+
+RM_ScanIterator::RM_ScanIterator(
+    FileHandle *fileHandle,
+    const vector<Attribute> recordDescriptor,
+    const string conditionAttribute,
+    const CompOp compOp,
+    const char *value,
+    const vector<string> attributeNames)
+    : it(nullptr)
+{
+    it = new RBFM_ScanIterator(
+        fileHandle,
+        recordDescriptor,
+        conditionAttribute,
+        compOp,
+        value,
+        attributeNames
+    );
+}
+
+RC RM_ScanIterator::getNextTuple(RID &rid, void *data)
+{
+    return it->getNextRecord(rid, data);
+}
+
+RC RM_ScanIterator::close()
+{
+    return it->close();
+}
+
 RelationManager *RelationManager::instance()
 {
     static RelationManager _rm;
@@ -175,7 +217,7 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
     }
     rbfm->readAttribute(tableFH, TABLES_ATTRS, rid, "table-id", &tableId);
     rbfm->closeFile(tableFH);
-
+    
     // scan Columns.tbl
     vector<string> allColAttrs;
     for (unsigned i = 0; i < COLUMNS_ATTRS.size(); i++)
@@ -292,7 +334,30 @@ RC RelationManager::scan(const string &tableName,
                          const vector<string> &attributeNames,
                          RM_ScanIterator &rm_ScanIterator)
 {
-    return -1;
+    vector<Attribute> recordDescriptor;
+    if (getAttributes(tableName, recordDescriptor) != 0)
+    {
+        cerr << "get Attribute at " << tableName << "failed" << endl;
+        return -1;
+    }
+    FileHandle *fileHandle = new FileHandle();
+    if (rbfm->openFile(tableName + PREFIX, *fileHandle) != 0)
+    {
+        cerr << "can't open .tbl" + tableName << endl;
+        return -1;
+    }
+    
+    RM_ScanIterator *it = new RM_ScanIterator(
+        fileHandle,
+        recordDescriptor,
+        conditionAttribute,
+        compOp,
+        static_cast<const char*>(value),
+        attributeNames
+    );
+
+    rm_ScanIterator = *it;
+    return 0;
 }
 
 void RelationManager::cpyAndInc(char des[], unsigned &offset, const void *src, unsigned len)

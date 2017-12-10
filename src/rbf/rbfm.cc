@@ -28,9 +28,6 @@ RBFM_ScanIterator::RBFM_ScanIterator(
       nextSn(0),
       currPg(nullptr)
 {
-    Utils::assertExit("can't deal with attributeNames.size() != recordDescriptor.size()",
-                      attributeNames.size() != recordDescriptor.size());
-
     if (compOp != NO_OP)
     {
         // find attribute type
@@ -117,8 +114,10 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
     Utils::assertExit("next record should not be nullptr", !record);
     Utils::assertExit("can't scan delete/updated record", record->ptrFlag != 0);
 
-    memcpy(data, record->data, record->sizeWithoutHeader(recordDescriptor));
-
+    // cerr << "next Record: " <<  record->toString(recordDescriptor) << endl;
+    record->attributeProject(recordDescriptor, attributeNames, static_cast<char *>(data));
+    // memcpy(data, record->data, record->sizeWithoutHeader(recordDescriptor));
+    
     rid.pageNum = nextPn - 1;
     rid.slotNum = nextSn;
 
@@ -383,11 +382,6 @@ string Record::toString(const vector<Attribute> &recordDescriptor)
 
 unsigned Record::getAttribute(const vector<Attribute> &recordDescriptor, const string &attributeName, char *des)
 {
-    if (!data)
-    {
-        return 0;
-    }
-
     unsigned offset = 0;
     unsigned vcSize = 0;
     unsigned attributeNum = recordDescriptor.size();
@@ -456,6 +450,96 @@ unsigned Record::getAttribute(const vector<Attribute> &recordDescriptor, const s
     }
     }
     return 0;
+}
+
+unsigned Record::attributeProject(const vector<Attribute> &recordDescriptor, const vector<string> attributeNames, char *des)
+{
+    unsigned srcOffset = 0,
+             desOffset = 0,
+             vcSize = 0;
+    // get src null indicators
+    bool srcNullIndicators[recordDescriptor.size()];
+    srcOffset += parseNullIndicator(srcNullIndicators, recordDescriptor, data);
+
+    // make des null indicators
+    bool desNullIndicators[recordDescriptor.size()];
+
+    for (unsigned i = 0; i < recordDescriptor.size(); i++)
+    {
+        desNullIndicators[i] = true;
+
+        // if original indicator is true, then still true, since there's no data
+        if (srcNullIndicators[i])
+        {
+            continue;
+        }
+
+        // else decide whether user need this attribute
+        for (unsigned j = 0; j < attributeNames.size(); j++)
+        {
+            if (recordDescriptor[i].name == attributeNames[j])
+            {
+                desNullIndicators[i] = false;
+                break;
+            }
+        }
+    }
+    
+    // copy null indicator data to des
+    desOffset = Utils::makeNullIndicator(desNullIndicators, recordDescriptor.size(), des);
+    
+    Utils::assertExit("[ERR]desOffset != srcOffset", desOffset != srcOffset);
+    
+    // pick data to copy
+    for (unsigned i = 0; i < recordDescriptor.size(); i++)
+    {
+        // cerr << "desOffset=" << desOffset << ", srcOffset=" << srcOffset << endl;
+        // cerr << "desNullIndicators com=" << memcmp(des, data, desOffset) << endl;
+
+        // if srcNullIndicators[i], then desNullIndicators[i]
+        if (srcNullIndicators[i])
+        {
+            continue;
+        }
+        switch (recordDescriptor[i].type)
+        {
+        case TypeInt:
+        case TypeReal:
+        {
+            // jump this attribute
+            if (desNullIndicators[i])
+            {
+                srcOffset += 4;
+            }
+            else
+            {
+                memcpy(des + desOffset, data + srcOffset, 4);
+                srcOffset += 4;
+                desOffset += 4;
+            }
+            break;
+        }
+        case TypeVarChar:
+        {
+            vcSize = Utils::getVCSizeWithHead(data + srcOffset);
+            if (desNullIndicators[i])
+            {
+                srcOffset += vcSize;
+            }
+            else
+            {
+                // copy both size and data
+                memcpy(des + desOffset, data + srcOffset, vcSize);
+                srcOffset += vcSize;
+                desOffset += vcSize;
+            }
+            break;
+        }
+        }
+    }
+    // cerr << "desOffset=" << desOffset << ", srcOffset=" << srcOffset << endl;
+    // cerr << "memcmp=" << memcmp(data, des, desOffset) << endl;
+    return desOffset;
 }
 
 const unsigned DataPage::DATA_PAGE_HEADER_SIZE = sizeof(unsigned) * 2;
