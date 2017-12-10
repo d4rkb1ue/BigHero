@@ -208,7 +208,19 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 
 RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
 {
-    return -1;
+    vector<Attribute> recordDescriptor;
+    if (getAttributes(tableName, recordDescriptor) != 0)
+    {
+        cerr << "get Attribute at " << tableName << "failed" << endl;
+        return -1;
+    }
+    FileHandle fileHandle;
+    if (rbfm->openFile(tableName + PREFIX, fileHandle) != 0)
+    {
+        cerr << "can't open .tbl" + tableName << endl;
+        return -1;
+    }
+    return rbfm->insertRecord(fileHandle, recordDescriptor, data, rid);
 }
 
 RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
@@ -223,12 +235,24 @@ RC RelationManager::updateTuple(const string &tableName, const void *data, const
 
 RC RelationManager::readTuple(const string &tableName, const RID &rid, void *data)
 {
-    return -1;
+    vector<Attribute> recordDescriptor;
+    if (getAttributes(tableName, recordDescriptor) != 0)
+    {
+        cerr << "get Attribute at " << tableName << "failed" << endl;
+        return -1;
+    }
+    FileHandle fileHandle;
+    if (rbfm->openFile(tableName + PREFIX, fileHandle) != 0)
+    {
+        cerr << "can't open .tbl" + tableName << endl;
+        return -1;
+    }
+    return rbfm->readRecord(fileHandle, recordDescriptor, rid, data);
 }
 
 RC RelationManager::printTuple(const vector<Attribute> &attrs, const void *data)
 {
-    return -1;
+    return rbfm->printRecord(attrs, data);
 }
 
 RC RelationManager::readAttribute(const string &tableName, const RID &rid, const string &attributeName, void *data)
