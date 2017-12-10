@@ -58,6 +58,7 @@ class RelationManager
     RC readTuple(const string &tableName, const RID &rid, void *data);
     RC printTuple(const vector<Attribute> &attrs, const void *data);
 
+    // with NULL indicator
     RC readAttribute(const string &tableName, const RID &rid, const string &attributeName, void *data);
 
     RC scan(const string &tableName,
@@ -67,11 +68,11 @@ class RelationManager
             const vector<string> &attributeNames,
             RM_ScanIterator &rm_ScanIterator);
 
-// Extra credit work (10 points)
-public:
-  RC addAttribute(const string &tableName, const Attribute &attr);
+    // Extra credit work (10 points)
+  public:
+    RC addAttribute(const string &tableName, const Attribute &attr);
 
-  RC dropAttribute(const string &tableName, const string &attributeName);
+    RC dropAttribute(const string &tableName, const string &attributeName);
 
   protected:
     RecordBasedFileManager *rbfm;

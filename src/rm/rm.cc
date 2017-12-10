@@ -257,7 +257,32 @@ RC RelationManager::printTuple(const vector<Attribute> &attrs, const void *data)
 
 RC RelationManager::readAttribute(const string &tableName, const RID &rid, const string &attributeName, void *data)
 {
-    return -1;
+    vector<Attribute> recordDescriptor;
+    if (getAttributes(tableName, recordDescriptor) != 0)
+    {
+        cerr << "get Attribute at " << tableName << "failed" << endl;
+        return -1;
+    }
+    FileHandle fileHandle;
+    if (rbfm->openFile(tableName + PREFIX, fileHandle) != 0)
+    {
+        cerr << "can't open .tbl" + tableName << endl;
+        return -1;
+    }
+
+    // make null indicator
+    bool ni[recordDescriptor.size()];
+    for (unsigned i = 0; i < recordDescriptor.size(); i++)
+    {
+        ni[i] = recordDescriptor[i].name == attributeName ? false : true;
+        // cerr << (ni[i] ? "1" : "0");
+    }
+    cerr << endl;
+
+    unsigned nullIndicatorSize = Utils::makeNullIndicator(ni, recordDescriptor.size(), data);
+
+    // rbfm return without null indicators
+    return rbfm->readAttribute(fileHandle, recordDescriptor, rid, attributeName, static_cast<char *>(data) + nullIndicatorSize);
 }
 
 RC RelationManager::scan(const string &tableName,

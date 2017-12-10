@@ -41,6 +41,7 @@ class Utils
     static void assertExit(const string e, RC ret);
     static void assertExit(const string e, bool b = true);
     static unsigned getVCSizeWithHead(const char *data);
+    static unsigned makeNullIndicator(const bool ni[], const unsigned len, void *data);
 };
 
 /****************************************************
