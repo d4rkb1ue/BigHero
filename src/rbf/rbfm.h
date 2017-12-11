@@ -111,6 +111,7 @@ class Record
     
     // return projected data size
     unsigned attributeProject(const vector<Attribute> &recordDescriptor, const vector<string> attributeNames, char *des);
+    unsigned attributeProjectCompress(const vector<Attribute> &recordDescriptor, const vector<string> attributeNames, char *des);
 };
 
 // DataPage: [Size][RecordNum][Records Data]...

@@ -542,6 +542,19 @@ unsigned Record::attributeProject(const vector<Attribute> &recordDescriptor, con
     // copy null indicator data to des
     desOffset = Utils::makeNullIndicator(desNullIndicators, recordDescriptor.size(), des);
     
+    // test desNullIndicators
+    bool test[recordDescriptor.size()];
+    parseNullIndicator(test, recordDescriptor, des);
+    for (unsigned i = 0; i < recordDescriptor.size(); i++)
+    {
+        if (test[i] != desNullIndicators[i])
+        {
+            cerr << "desNullIndicators wrong!" << endl;
+            exit(-1);
+        }
+    }
+
+
     Utils::assertExit("[ERR]desOffset != srcOffset", desOffset != srcOffset);
     
     // pick data to copy
@@ -595,6 +608,100 @@ unsigned Record::attributeProject(const vector<Attribute> &recordDescriptor, con
     // cerr << "memcmp=" << memcmp(data, des, desOffset) << endl;
     return desOffset;
 }
+
+unsigned Record::attributeProjectCompress(const vector<Attribute> &recordDescriptor, const vector<string> attributeNames, char *des)
+{
+    unsigned srcOffset = 0,
+             desOffset = 0,
+             vcSize = 0;
+    // get src null indicators
+    bool srcNullIndicators[recordDescriptor.size()];
+    srcOffset += parseNullIndicator(srcNullIndicators, recordDescriptor, data);
+
+    // make des null indicators
+    bool desNullIndicators[recordDescriptor.size()];
+
+    for (unsigned i = 0; i < recordDescriptor.size(); i++)
+    {
+        desNullIndicators[i] = true;
+
+        // if original indicator is true, then still true, since there's no data
+        if (srcNullIndicators[i])
+        {
+            continue;
+        }
+
+        // else decide whether user need this attribute
+        for (unsigned j = 0; j < attributeNames.size(); j++)
+        {
+            if (recordDescriptor[i].name == attributeNames[j])
+            {
+                desNullIndicators[i] = false;
+                break;
+            }
+        }
+    }
+    
+    // copy null indicator data to des
+    unsigned compressNISize = (attributeNames.size() - 1) / 8 + 1;
+    memset(des, 0, compressNISize);
+    desOffset += compressNISize;
+
+
+    // Utils::assertExit("[ERR]desOffset != srcOffset", desOffset != srcOffset);
+    
+    // pick data to copy
+    for (unsigned i = 0; i < recordDescriptor.size(); i++)
+    {
+        // cerr << "desOffset=" << desOffset << ", srcOffset=" << srcOffset << endl;
+        // cerr << "desNullIndicators com=" << memcmp(des, data, desOffset) << endl;
+
+        // if srcNullIndicators[i], then desNullIndicators[i]
+        if (srcNullIndicators[i])
+        {
+            continue;
+        }
+        switch (recordDescriptor[i].type)
+        {
+        case TypeInt:
+        case TypeReal:
+        {
+            // jump this attribute
+            if (desNullIndicators[i])
+            {
+                srcOffset += 4;
+            }
+            else
+            {
+                memcpy(des + desOffset, data + srcOffset, 4);
+                srcOffset += 4;
+                desOffset += 4;
+            }
+            break;
+        }
+        case TypeVarChar:
+        {
+            vcSize = Utils::getVCSizeWithHead(data + srcOffset);
+            if (desNullIndicators[i])
+            {
+                srcOffset += vcSize;
+            }
+            else
+            {
+                // copy both size and data
+                memcpy(des + desOffset, data + srcOffset, vcSize);
+                srcOffset += vcSize;
+                desOffset += vcSize;
+            }
+            break;
+        }
+        }
+    }
+    // cerr << "desOffset=" << desOffset << ", srcOffset=" << srcOffset << endl;
+    // cerr << "memcmp=" << memcmp(data, des, desOffset) << endl;
+    return desOffset;
+}
+
 
 const unsigned DataPage::DATA_PAGE_HEADER_SIZE = sizeof(unsigned) * 2;
 

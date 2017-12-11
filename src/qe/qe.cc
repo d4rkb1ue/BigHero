@@ -143,3 +143,51 @@ int Filter::compareTo(AttrType type, char *value, char *thatVal)
     }
     return 0;
 }
+
+Project::Project(Iterator *input, const vector<string> &attrNames)
+    : input(input),
+      attrNames(attrNames)
+{
+    vector<Attribute> ori;
+    input->getAttributes(ori);
+    for (unsigned i = 0; i < attrNames.size(); i++)
+    {
+        for (unsigned j = 0; j < ori.size(); j++)
+        {
+            if (ori[j].name == attrNames[i])
+            {
+                this->attrs.push_back(ori[j]);
+                cerr << "project attr push back " << ori[j].name << endl;
+            }
+        }
+    }
+}
+
+Project::~Project()
+{
+}
+
+RC Project::getNextTuple(void *data)
+{
+    if (input->getNextTuple(static_cast<char*>(data)) == -1)
+    {
+        return -1;
+    }
+    vector<Attribute> ori;
+    input->getAttributes(ori);
+    Record rec(ori, static_cast<char*>(data));
+    // cerr << "Projecting: " << rec.toString(ori) << endl;
+    rec.attributeProjectCompress(ori, attrNames, static_cast<char*>(data));
+    // Record rec2(ori, static_cast<char*>(data));
+    // cerr << "After Projecting: " << rec2.toString(ori) << endl;
+    return 0;
+}
+
+void Project::getAttributes(vector<Attribute> &attrs) const
+{
+    attrs.clear();
+    for (unsigned i = 0; i < this->attrs.size(); i++)
+    {
+        attrs.push_back(this->attrs[i]);
+    }
+}
