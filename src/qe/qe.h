@@ -193,14 +193,20 @@ class IndexScan : public Iterator
 class Filter : public Iterator {
     // Filter operator
     public:
+        Iterator *input;
+        Condition condition;
+        vector<Attribute> attrs;
+        char buffer[PAGE_SIZE];
+        
         Filter(Iterator *input,               // Iterator of input R
                const Condition &condition     // Selection condition
         );
         ~Filter(){};
 
-        RC getNextTuple(void *data) {return QE_EOF;};
+        RC getNextTuple(void *data);
+        int compareTo(AttrType type, char *value, char *thatVal);
         // For attribute in vector<Attribute>, name it as rel.attr
-        void getAttributes(vector<Attribute> &attrs) const{};
+        void getAttributes(vector<Attribute> &attrs) const;
 };
 
 
