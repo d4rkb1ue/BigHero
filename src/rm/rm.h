@@ -36,10 +36,14 @@ class RM_ScanIterator
 class RM_IndexScanIterator
 {
   public:
-    RM_IndexScanIterator(){};
-    ~RM_IndexScanIterator(){};
-    RC getNextEntry(RID &rid, void *key) { return -1; };
-    RC close() { return -1; };
+    IX_ScanIterator *it;
+    IXFileHandle *ixfileHandle;
+
+    RM_IndexScanIterator();
+    RM_IndexScanIterator(IX_ScanIterator *it, IXFileHandle *ixfileHandle);
+    ~RM_IndexScanIterator();
+    RC getNextEntry(RID &rid, void *key);
+    RC close();
 };
 
 // Relation Manager

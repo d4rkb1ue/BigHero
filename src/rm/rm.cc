@@ -514,5 +514,82 @@ RC RelationManager::indexScan(const string &tableName,
                               bool highKeyInclusive,
                               RM_IndexScanIterator &rm_IndexScanIterator)
 {
-    return -1;
+    IXFileHandle *ixfileHandle = new IXFileHandle();
+    if (ix->openFile(getIdxFileName(tableName, attributeName), *ixfileHandle) != 0)
+    {
+        cerr << "no index file: " << getIdxFileName(tableName, attributeName) << endl;
+        return -1;
+    }
+    vector<Attribute> attrs;
+    Attribute attr;
+    getAttributes(tableName, attrs);
+    for (unsigned i = 0; i < attrs.size(); i++)
+    {
+        if (attrs[i].name == attributeName)
+        {
+            attr = attrs[i];
+            // cerr << "attr: type = " << attr.type << endl;
+            break;
+        }
+        if (i == attrs.size() - 1)
+        {
+            cerr << "attr: " << attributeName << " not found." << endl;
+            exit(-1);
+        }
+    }
+    // ix->printBtree(*ixfileHandle, attr, true);
+    IX_ScanIterator *it = new IX_ScanIterator();
+    ix->scan(*ixfileHandle, attr, lowKey, highKey, lowKeyInclusive, highKeyInclusive, *it);
+    RM_IndexScanIterator *rmit = new RM_IndexScanIterator(it, ixfileHandle);
+    rm_IndexScanIterator = *rmit;
+    return 0;
+}
+
+RM_IndexScanIterator::RM_IndexScanIterator()
+    : it(nullptr)
+{
+}
+
+RM_IndexScanIterator::~RM_IndexScanIterator()
+{
+    if (it)
+    {
+        delete it;
+    }
+    if (ixfileHandle)
+    {
+        IndexManager::instance()->closeFile(*ixfileHandle);
+    }
+}
+
+RM_IndexScanIterator::RM_IndexScanIterator(IX_ScanIterator *it, IXFileHandle *ixfileHandle)
+    : it(it),
+      ixfileHandle(ixfileHandle)
+{
+}
+
+RC RM_IndexScanIterator::getNextEntry(RID &rid, void *key)
+{
+    if (!it)
+    {
+        cerr << "for null iterator, should not call get next" << endl;
+        return -1;
+    }
+    // cerr << "in RM_IndexScanIterator::getNextEntry() " << endl;
+    // char buffer[PAGE_SIZE];
+    // RID rid;
+    // while (it->getNextEntry(rid, key) != -1)
+    // {
+    //     cerr << rid.slotNum << ", " << endl;
+    // }
+    return it->getNextEntry(rid, key);
+}
+
+RC RM_IndexScanIterator::close()
+{
+    if (it)
+    {
+        it->close();
+    }
+    return 0;
 }

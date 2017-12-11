@@ -242,6 +242,11 @@ IX_ScanIterator::~IX_ScanIterator()
 
 RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
 {
+    if (!ixfileHandle)
+    {
+        cerr << "no ixfileHandle provided in IX_ScanIterator" << endl;
+        exit(-1);
+    }
     if (ixfileHandle->getTree(attr.type)->isEmpty())
     {
         return IX_EOF;
