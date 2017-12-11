@@ -216,7 +216,7 @@ class Project : public Iterator {
         Iterator *input;
         vector<string> attrNames;
         vector<Attribute> attrs;
-        
+
         Project(Iterator *input,                    // Iterator of input R
               const vector<string> &attrNames);     // vector containing attribute names
         ~Project();
@@ -276,12 +276,17 @@ class GHJoin : public Iterator {
 class Aggregate : public Iterator {
     // Aggregation operator
     public:
+        Iterator *input;
+        Attribute aggAttr;
+        AggregateOp op;
+        bool firstOne;
+        bool isFinished;
         // Mandatory
         // Basic aggregation
         Aggregate(Iterator *input,          // Iterator of input R
                   Attribute aggAttr,        // The attribute over which we are computing an aggregate
                   AggregateOp op            // Aggregate operation
-        ){};
+        );
 
         // Optional for everyone: 5 extra-credit points
         // Group-based hash aggregation
@@ -292,11 +297,12 @@ class Aggregate : public Iterator {
         ){};
         ~Aggregate(){};
 
-        RC getNextTuple(void *data){return QE_EOF;};
+        RC getNextTuple(void *data);
         // Please name the output attribute as aggregateOp(aggAttr)
         // E.g. Relation=rel, attribute=attr, aggregateOp=MAX
         // output attrname = "MAX(rel.attr)"
-        void getAttributes(vector<Attribute> &attrs) const{};
+        void getAttributes(vector<Attribute> &attrs) const;
+        int compareTo(AttrType type, char *value, char *thatVal);
 };
 
 #endif

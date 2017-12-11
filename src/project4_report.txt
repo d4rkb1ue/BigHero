@@ -34,12 +34,13 @@ gcc version : 5.4.1 20160904 (Ubuntu 5.4.1-2ubuntu1~14.04)
 6. Aggregation
 - Describe how your aggregation (basic, group-based hash) works.
 
+basic. Just call input->getNext untill EOF, compare all data appears.
 
 7. Implementation Detail
 - Have you added your own source file (.cc or .h)?
-
+No.
 - Have you implemented any optional features? Then, describe them here.
-
+No.
 - Other implementation details:
 
 
